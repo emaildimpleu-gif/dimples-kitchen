@@ -23,11 +23,11 @@
     #app-header{background:#F0EBE6;padding:16px 28px 12px;position:sticky;top:0;z-index:100;border-bottom:1px solid #E0D8D0}
     #header-title{color:#2E3038;font-size:15px;font-weight:800;letter-spacing:4px;text-transform:uppercase;font-family:'Montserrat',system-ui,sans-serif}
     #header-sub{display:flex;justify-content:space-between;align-items:center;margin-top:5px}
-    #header-info{color:#9A9098;font-size:11px;font-family:'Montserrat',system-ui,sans-serif;font-weight:500}
+    #header-info{color:#6A6470;font-size:11px;font-family:'Montserrat',system-ui,sans-serif;font-weight:500}
     #btn-backup{border:1.5px solid #5AAAC8;background:transparent;color:#5AAAC8;border-radius:3px;padding:5px 14px;font-size:10px;font-family:'Montserrat',system-ui,sans-serif;font-weight:700;letter-spacing:1px}
     /* Nav tabs — top, below header */
     #app-nav{background:#F0EBE6;border-bottom:1px solid #E0D8D0;display:flex;padding:0 28px;z-index:99;position:sticky;top:65px}
-    .nav-btn{flex:none;padding:12px 20px 11px;border:none;border-bottom:2.5px solid transparent;background:none;display:flex;align-items:center;gap:0;color:#C0B8C0;font-family:'Montserrat',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;margin-bottom:-1px}
+    .nav-btn{flex:none;padding:12px 20px 11px;border:none;border-bottom:2.5px solid transparent;background:none;display:flex;align-items:center;gap:0;color:#888;font-family:'Montserrat',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;margin-bottom:-1px}
     .nav-btn.active{color:#2E3038;border-bottom-color:#5AAAC8}
     .nav-btn .nav-icon{display:none}
     .nav-btn .nav-label{font-size:10px;font-weight:700;letter-spacing:1.2px}
@@ -39,7 +39,7 @@
     /* Inputs */
     .inp{width:100%;padding:9px 12px;border:1px solid #D8D0C8;border-radius:4px;font-family:'Montserrat',system-ui,sans-serif;font-size:13px;color:#2E3038;outline:none;background:#fff;box-sizing:border-box}
     .inp:focus{border-color:#5AAAC8}
-    .lbl{display:block;font-size:10px;font-weight:700;color:#9A9098;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.8px}
+    .lbl{display:block;font-size:10px;font-weight:700;color:#6A6470;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.8px}
     /* Utility */
     .sec-scroll{overflow-y:auto;flex:1}
     .nutr-chip{display:inline-block;border-radius:3px;padding:2px 6px;font-size:11px;font-weight:700;margin-right:4px}
@@ -1361,32 +1361,42 @@ function combineIngredients(items){
   return result;
 }
 
+// ── SINGLE SOURCE OF TRUTH: TOTAL SERVINGS ───────────────────────────────────
+// totalServings = (planCount × baseServings) + guestCount
+// factor        = totalServings / baseServings
+// Used by: recipe modal ingredients, guest modal preview, shopping list
+function getTotalServings(recipeId){
+  const r=allRecipes().find(x=>x.id===recipeId);
+  if(!r)return{totalServings:1,factor:1,baseServings:1,planCount:0,guestCount:0};
+  const baseServings=r.servings||1;
+  const planCount=countRecipeInPlan(recipeId)||0;
+  const guestCount=(S.guestServings||{})[recipeId]||0;
+  const totalServings=(planCount*baseServings)+guestCount;
+  const effective=Math.max(totalServings,baseServings);
+  const factor=effective/baseServings;
+  return{totalServings:effective,factor,baseServings,planCount,guestCount};
+}
+
 function buildShoppingList(plan,recipes,days){
-  // Count how many slots each recipe occupies across the week
-  const occurrences={};
+  // Collect unique recipe IDs from plan
+  const seen=new Set();
   for(let i=0;i<days;i++){
     ["breakfast","lunch","dinner"].forEach(meal=>{
-      const slot=plan[i]?.[meal];
-      if(!slot)return;
-      const id=slot.id;
-      occurrences[id]=(occurrences[id]||0)+1;
+      const id=plan[i]?.[meal]?.id;
+      if(id)seen.add(id);
     });
   }
-  // For each unique recipe, calculate how many batches to cook
-  // batches = occurrences / recipe.servings (minimum 1 full batch)
   const allItems=[];
-  Object.entries(occurrences).forEach(([id,count])=>{
+  seen.forEach(id=>{
     const recipe=recipes.find(r=>r.id===id);
     if(!recipe)return;
-    const batches=Math.max(1,count/(recipe.servings||2));
+    const{factor}=getTotalServings(id);
     recipe.ingredients.forEach(ing=>{
-      const scaledIng=batches!==1?scaleIng(ing,batches):ing;
+      const scaledIng=factor!==1?scaleIng(ing,factor):ing;
       allItems.push({ing:scaledIng,from:recipe.title,originalIng:ing});
     });
   });
-  // Combine quantities for duplicate ingredients across recipes
   const combined=combineIngredients(allItems);
-  // Group by category
   const groups={};
   combined.forEach(item=>{
     const cat=catIng(item.text);
@@ -1835,10 +1845,13 @@ function renderRecipeModal(){
   if(!S.recipeModal)return"";
   const r=allRecipes().find(x=>x.id===S.recipeModal.id);if(!r)return"";
   const{chkI,chkS,sv}=S.recipeModal;
-  const ingFactor=sv/(r.servings||1);
-  // scale: slot.scale when opened from plan, 1 when opened from library
-  const factor=S.recipeModal.scale||1;
-  const fromPlan=factor!==1;
+  // Single source of truth for all ingredient scaling
+  const isBreakfast=r.type==="breakfast";
+  const{totalServings,factor:mealFactor,guestCount}=getTotalServings(r.id);
+  const servings=sv||1;
+  const factor=isBreakfast?servings:mealFactor;
+  const displayServings=isBreakfast?servings:totalServings;
+  const fromPlan=S.recipeModal.dayIdx!==null;
   const ai=antiInflam(r);
   const modalImg=recipeImg(r);
   const isFavModal=(S.favorites||new Set()).has(r.id);
@@ -1859,115 +1872,29 @@ function renderRecipeModal(){
   html+=`<button onclick="closeRecipe()" style="border:none;background:none;font-size:26px;cursor:pointer;color:#BBB;line-height:1;padding:0">×</button>`;
   html+=`</div></div>`;
   if(modalImg)html+=`<div style="margin:10px -20px 0;overflow:hidden;height:190px"><img src="${modalImg}" alt="${esc(r.title)}" style="width:100%;height:190px;object-fit:cover;display:block"></div>`;
-  html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#FFF;border-radius:10px;padding:8px 12px;border:1px solid #E8E3DA">`;
-  let planCount=0;
-  for(let pi=0;pi<S.days;pi++){["breakfast","lunch","dinner"].forEach(m=>{if(S.plan[pi]?.[m]?.id===r.id)planCount++;});}
-  const guestCount2=(S.guestServings||{})[r.id]||0;
-  const cookingNote=planCount>0&&guestCount2>0
-    ?`<span style="font-size:10px;color:#5AAAC8;font-weight:600;margin-left:6px">· ${planCount}x in plan + ${guestCount2} guests</span>`
-    :planCount>0?`<span style="font-size:10px;color:#5AAAC8;font-weight:600;margin-left:6px">· appears ${planCount}x in your plan</span>`
-    :guestCount2>0?`<span style="font-size:10px;color:#C8A0D8;font-weight:600;margin-left:6px">· +${guestCount2} guests saved</span>`:"";
-  html+=`<span style="font-size:12px;color:#888;font-weight:600">Cooking for:</span>${cookingNote}`;
-  [1,2,4,6,8].forEach(s=>{html+=`<button onclick="S.recipeModal.sv=${s};renderModals()" style="width:30px;height:30px;border-radius:50%;border:1.5px solid ${sv===s?G:"#DDD"};background:${sv===s?G:"#FFF"};color:${sv===s?"#FFF":"#666"};font-size:12px;font-weight:700;cursor:pointer">${s}</button>`;});
-  html+=`</div>`;
-  if(S.recipeModal.dayIdx!==null){
-    const currentCount=countRecipeInPlan(r.id);
-    const unchanged=sv===currentCount;
-    html+=`<div style="margin-top:8px">`;
-    if(unchanged){
-      html+=`<div style="font-size:10px;color:#AAA;padding:6px 10px;background:#F5F2EF;border-radius:6px;text-align:center">Servings unchanged (${sv}× in plan)</div>`;
-    }else{
-      html+=`<button onclick="applyServingsFromModal()" style="width:100%;padding:9px;background:${G};color:#FFF;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">Apply ${sv} serving${sv!==1?"s":""} to plan →</button>`;
-    }
+  if(isBreakfast){
+    html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#FFF;border-radius:10px;padding:8px 12px;border:1px solid #E8E3DA">`;
+    const cookingNote=guestCount>0?`<span style="font-size:10px;color:#C8A0D8;font-weight:600;margin-left:6px">· +${guestCount} guests saved</span>`:"";
+    html+=`<span style="font-size:12px;color:#555;font-weight:600">Servings:</span>${cookingNote}`;
+    [1,2,4,6,8].forEach(s=>{html+=`<button onclick="S.recipeModal.sv=${s};renderModals()" style="width:30px;height:30px;border-radius:50%;border:1.5px solid ${sv===s?G:"#DDD"};background:${sv===s?G:"#FFF"};color:${sv===s?"#FFF":"#555"};font-size:12px;font-weight:700;cursor:pointer">${s}</button>`;});
     html+=`</div>`;
   }
-  html+=`<div style="font-size:11px;color:#AAA;margin-top:10px;margin-bottom:4px">Nutrition per serving${fromPlan?` <span style="color:#5AAAC8;font-weight:700">×${Math.round(factor*100)/100} scaled</span> <span style="color:#CCC">· base: ${r.nutrition.calories} cal</span>`:""}</div>`;
+  html+=`<div style="font-size:11px;color:#555;font-weight:600;margin-top:10px;margin-bottom:6px">Per serving</div>`;
   html+=`<div style="display:flex;flex-wrap:wrap;gap:5px">`;
+  const slotScale=S.recipeModal.scale||1;
   [["Cal",r.nutrition.calories,"",T],["Protein",r.nutrition.protein,"g",G],["Carbs",r.nutrition.carbs,"g","#8B6914"],["Fat",r.nutrition.fat,"g","#6B3FA0"],["Fiber",r.nutrition.fiber,"g","#1E7A8A"],["Sodium",r.nutrition.sodium||0,"mg","#888"]].forEach(([l,v,u,c])=>{
-    html+=`<div style="background:${c}20;border:1px solid ${c}30;border-radius:8px;padding:4px 10px;text-align:center"><div style="font-size:10px;color:#AAA">${l}</div><div style="font-size:15px;font-weight:800;color:${c}">${Math.round((v||0)*factor)}${u}</div></div>`;
+    html+=`<div style="background:${c}20;border:1px solid ${c}30;border-radius:8px;padding:4px 10px;text-align:center"><div style="font-size:10px;color:#666">${l}</div><div style="font-size:15px;font-weight:800;color:${c}">${Math.round((v||0)*slotScale)}${u}</div></div>`;
   });
   html+=`</div>`;
   if(ai.length>0){html+=`<div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">`;ai.forEach(i=>{html+=`<span style="background:#ECFDF5;border:1px solid #6EE7B7;color:#065F46;border-radius:10px;padding:2px 9px;font-size:11px">🌿 ${esc(i)}</span>`;});html+=`</div>`;}
-  // ── PORTION CALIBRATION (weight-based) ──
-  const calPerSv=r.nutrition.calories||0;
-  const proteinPerSv=r.nutrition.protein||0;
-  const carbsPerSv=r.nutrition.carbs||0;
-  const fatPerSv=r.nutrition.fat||0;
-  const recipeServings=r.servings||1;
-  const totalCookedWeight=S.recipeModal.totalCookedWeight!==undefined?S.recipeModal.totalCookedWeight:"";
-  const gramsEaten=S.recipeModal.gramsEaten!==undefined?S.recipeModal.gramsEaten:"";
-  const totalW=parseFloat(totalCookedWeight)||0;
-  const totalRecipeCal=calPerSv*recipeServings;
-  const totalRecipeProtein=proteinPerSv*recipeServings;
-  const totalRecipeCarbs=carbsPerSv*recipeServings;
-  const totalRecipeFat=fatPerSv*recipeServings;
-  // Per-gram densities — only valid when user has entered cooked weight
-  const calPerG=totalW>0?totalRecipeCal/totalW:null;
-  const proteinPerG=totalW>0?totalRecipeProtein/totalW:null;
-  const carbsPerG=totalW>0?totalRecipeCarbs/totalW:null;
-  const fatPerG=totalW>0?totalRecipeFat/totalW:null;
-  const gramsPerServing=totalW>0?Math.round(totalW/recipeServings):null;
-  // Intake from grams eaten
-  const gEaten=parseFloat(gramsEaten)||0;
-  const hasEaten=gEaten>0&&calPerG!==null;
-  const calEaten=hasEaten?Math.round(gEaten*calPerG):null;
-  const proteinEaten=hasEaten?Math.round(gEaten*proteinPerG*10)/10:null;
-  const carbsEaten=hasEaten?Math.round(gEaten*carbsPerG*10)/10:null;
-  const fatEaten=hasEaten?Math.round(gEaten*fatPerG*10)/10:null;
-  html+=`<div style="margin-top:10px;background:#F8F6F0;border-radius:12px;border:1px solid #E8E3DA;overflow:hidden">`;
-  html+=`<button onclick="S.recipeModal.showPortion=!S.recipeModal.showPortion;renderModals()" style="width:100%;border:none;background:none;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;text-align:left">`;
-  html+=`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:15px">⚖️</span><span style="font-size:12px;font-weight:700;color:#555">Portion tracker — weigh your batch</span></div>`;
-  html+=`<span style="font-size:12px;color:#AAA">${S.recipeModal.showPortion?"▲":"▼"}</span></button>`;
-  if(S.recipeModal.showPortion){
-    html+=`<div style="padding:0 14px 14px">`;
-    // Step 1: enter total cooked weight
-    html+=`<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Step 1 — weigh your finished batch</div>`;
-    html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">`;
-    html+=`<input type="number" min="1" max="5000" value="${esc(totalCookedWeight)}" placeholder="e.g. 800" oninput="S.recipeModal.totalCookedWeight=this.value;S.recipeModal.gramsEaten='';renderModals()" class="inp" style="width:100px;font-size:17px;font-weight:700;text-align:center;padding:8px">`;
-    html+=`<span style="font-size:14px;color:#888">g total cooked weight</span>`;
-    html+=`</div>`;
-    // Per-serving info once weight is entered
-    if(gramsPerServing!==null){
-      html+=`<div style="background:#EAF6FB;border:1px solid #A0D4E8;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#2E3038">`;
-      html+=`<strong>1 serving = ${gramsPerServing}g</strong> <span style="color:#888">(${totalW}g ÷ ${recipeServings} serving${recipeServings>1?"s":""})</span>`;
-      html+=` &nbsp;·&nbsp; <span style="font-weight:700;color:#5AAAC8">≈ ${calPerSv} kcal</span>`;
-      html+=`</div>`;
-      // Step 2: enter grams eaten
-      html+=`<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Step 2 — weigh what you actually ate</div>`;
-      html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">`;
-      html+=`<input type="number" min="1" max="3000" value="${esc(gramsEaten)}" placeholder="${gramsPerServing}" oninput="S.recipeModal.gramsEaten=this.value;renderModals()" class="inp" style="width:100px;font-size:17px;font-weight:700;text-align:center;padding:8px">`;
-      html+=`<span style="font-size:14px;color:#888">g eaten</span>`;
-      html+=`</div>`;
-      if(calEaten!==null){
-        html+=`<div style="background:#FFF5E0;border:1px solid #F0D090;border-radius:8px;padding:10px 14px;margin-bottom:8px">`;
-        html+=`<div style="font-size:11px;font-weight:700;color:#C87800;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">You ate ${gEaten}g — here's what that is:</div>`;
-        html+=`<div style="display:flex;gap:10px;flex-wrap:wrap">`;
-        html+=`<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#C87800">${calEaten}</div><div style="font-size:9px;color:#AAA;text-transform:uppercase">kcal</div></div>`;
-        html+=`<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#16A34A">${proteinEaten}g</div><div style="font-size:9px;color:#AAA;text-transform:uppercase">protein</div></div>`;
-        html+=`<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#8B6914">${carbsEaten}g</div><div style="font-size:9px;color:#AAA;text-transform:uppercase">carbs</div></div>`;
-        html+=`<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#6B3FA0">${fatEaten}g</div><div style="font-size:9px;color:#AAA;text-transform:uppercase">fat</div></div>`;
-        html+=`</div>`;
-        // vs 1 serving comparison bar
-        const barPct=Math.min(150,Math.round(calEaten/calPerSv*100));
-        const barColor=barPct<=115?"#5AAAC8":"#F0A500";
-        html+=`<div style="margin-top:10px;background:#E8E3DA;border-radius:6px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.min(barPct,100)}%;background:${barColor};border-radius:6px;transition:width 0.3s"></div></div>`;
-        html+=`<div style="display:flex;justify-content:space-between;font-size:10px;color:#AAA;margin-top:3px"><span>0</span><span>1 serving = ${gramsPerServing}g · ${calPerSv} kcal</span></div>`;
-        html+=`</div>`;
-      }
-    } else {
-      html+=`<div style="font-size:11px;color:#BBB;font-style:italic">Enter your total cooked weight above to calculate per-gram nutrition and portion sizes.</div>`;
-    }
-    html+=`</div>`;
-  }
-  html+=`</div>`;
   html+=`</div>`;
   html+=`<div style="overflow-y:auto;padding:16px 20px;flex:1">`;
-  html+=`<h3 style="font-size:14px;font-weight:700;color:#2E3038;margin:0 0 10px">Ingredients${factor!==1?` <span style="color:${T};font-size:13px">(×${Math.round(factor*10)/10})</span>`:""}</h3>`;
+  html+=`<h3 style="font-size:14px;font-weight:700;color:#2E3038;margin:0 0 10px">Ingredients${factor>1?` <span style="color:#666;font-size:11px;font-weight:500">(cook once for ${displayServings} servings)</span>`:""}</h3>`;
   r.ingredients.forEach((ing,idx)=>{
     const chk=chkI[idx];
     html+=`<div onclick="S.recipeModal.chkI[${idx}]=!S.recipeModal.chkI[${idx}];renderModals()" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F0EDE8;cursor:pointer;opacity:${chk?0.45:1}">`;
     html+=`<div style="width:18px;height:18px;border-radius:4px;flex-shrink:0;border:2px solid ${chk?G:"#CCC"};background:${chk?G:"transparent"};display:flex;align-items:center;justify-content:center;color:#FFF;font-size:11px">${chk?"✓":""}</div>`;
-    html+=`<span style="font-size:14px;color:#2E3038;text-decoration:${chk?"line-through":"none"}">${esc(ingFactor===1?ing:scaleIng(ing,ingFactor))}</span>`;
+    html+=`<span style="font-size:14px;color:#2E3038;text-decoration:${chk?"line-through":"none"}">${esc(factor===1?ing:scaleIng(ing,factor))}</span>`;
     html+=`</div>`;
   });
   html+=`<h3 style="font-size:14px;font-weight:700;color:#2E3038;margin:20px 0 10px">Instructions</h3>`;
@@ -2599,9 +2526,9 @@ function renderGuestScaleModal(){
   html+=`<input type="number" min="0" max="50" value="${esc(S.guestScale.people)}" placeholder="0" data-focus-id="guest-people" oninput="S.guestScale.people=this.value;renderModals()" class="inp" style="width:100px;font-size:18px;text-align:center;font-weight:700">`;
   html+=`<span style="font-size:13px;color:#9A9098">extra guests</span></div>`;
   if(people>0){
-    const factor=people/base;
+    const{totalServings,factor}=getTotalServings(S.guestScale.id);
     html+=`<div style="background:#F0EBE6;border-radius:8px;padding:14px;margin-bottom:16px">`;
-    html+=`<div style="font-size:11px;font-weight:700;color:#9A9098;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Scaled for ${people} extra guests</div>`;
+    html+=`<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cooking for ${totalServings} servings total</div>`;
     r.ingredients.forEach(ing=>{html+=`<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #E8E0D8;color:#2E3038">${esc(factor!==1?scaleIng(ing,factor):ing)}</div>`;});
     html+=`</div>`;
   }
@@ -3304,9 +3231,11 @@ function exportWeeklyPDF(){
   h+="<button class='printbtn' onclick='window.print()'>Print / Save as PDF</button>";
   planned.forEach(item=>{
     const r=item.recipe;
-    const rawImg=recipeImg(r);
-    const imgSrc=rawImg&&rawImg!=="images/default.jpg"?new URL(rawImg,window.location.href).href:null;
+    const imgSrc=new URL(recipeImg(r),window.location.href).href;
     const guestCount=S.guestServings?S.guestServings[r.id]||0:0;
+    // Same factor logic as modal: breakfast=fresh, lunch/dinner=batch
+    const pdfPlanCount=item.days.length||1;
+    const pdfFactor=(r.type==="breakfast")?1:pdfPlanCount;
     const mc=mealColor[item.meal]||"#5AAAC8";
     const ml=mealLabel[item.meal]||item.meal;
     h+="<div class='page'>";
@@ -3318,20 +3247,19 @@ function exportWeeklyPDF(){
     h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+r.servings+" serving"+(r.servings>1?"s":"")+(guestCount>0?" &nbsp;&middot;&nbsp; <span style='color:#C8A0D8;font-weight:700'>+"+guestCount+" guests</span>":"")+"</div>";
     h+="</div></div>";
     h+="<div class='r-body'><div>";
-    if(imgSrc)h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"'>";
-    else h+="<div class='r-img-ph'>"+r.emoji+"</div>";
-    h+="<div class='ing-title'>Ingredients</div>";
-    r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+ing+"</div>";});
+    h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
+    h+="<div class='ing-title'>Ingredients"+(pdfFactor>1?" (×"+pdfFactor+")":"")+"</div>";
+    r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";});
     h+="</div><div><div class='meth-title'>Method</div>";
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+step+"</div></div>";});
     h+="</div></div>";
     if(r.nutrition){
       h+="<div class='nutr'>";
-      h+="<div class='nc'><div class='nv' style='color:#F0A500'>"+r.nutrition.calories+"</div><div class='nl'>Cal</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+r.nutrition.protein+"g</div><div class='nl'>Protein</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#2E3038'>"+r.nutrition.carbs+"g</div><div class='nl'>Carbs</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+r.nutrition.fat+"g</div><div class='nl'>Fat</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+(r.nutrition.fiber||0)+"g</div><div class='nl'>Fibre</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#F0A500'>"+Math.round(r.nutrition.calories*pdfFactor)+"</div><div class='nl'>Cal</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+Math.round(r.nutrition.protein*pdfFactor)+"g</div><div class='nl'>Protein</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#2E3038'>"+Math.round(r.nutrition.carbs*pdfFactor)+"g</div><div class='nl'>Carbs</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+Math.round(r.nutrition.fat*pdfFactor)+"g</div><div class='nl'>Fat</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+Math.round((r.nutrition.fiber||0)*pdfFactor)+"g</div><div class='nl'>Fibre</div></div>";
       h+="</div>";
     }
     h+="<div class='footer'>DIMPLE'S KITCHEN &nbsp;&middot;&nbsp; "+new Date().toLocaleDateString("en-AU",{year:"numeric",month:"long",day:"numeric"})+"</div>";
