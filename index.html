@@ -1060,18 +1060,13 @@ RECIPES.forEach(r=>{if(!IMG_MAP[r.id])console.warn("Missing IMG_MAP entry for:",
 
 // User image overrides — keyed by recipe id, never modifies original recipe objects
 // Returns the display image for a recipe: user recipe image > IMG_MAP URL > default
-const IMG_BASE="https://helpful-taffy-5bbe52.netlify.app/";
+const IMG_BASE="https://emaildimpleu-gif.github.io/dimples-kitchen/images/";
 function recipeImg(r){
-  if(!r)return null;
-  // User-uploaded image (base64 or explicit path they set)
-  if(r.image&&typeof r.image==="string"&&r.image.trim()!=="")return r.image;
-  // Built-in recipe: only use IMG_MAP if it produces a valid absolute URL
-  const mapped=IMG_MAP[r.id];
-  if(mapped&&typeof mapped==="string"&&mapped.trim()!==""){
-    const url=IMG_BASE+mapped;
-    return url;
-  }
-  return null;
+  if(r?.image)return r.image;
+  if(!r?.id||!IMG_MAP[r.id])return null;
+  // IMG_MAP stores "images/b1.jpg" — extract filename only, then prepend IMG_BASE
+  const filename=IMG_MAP[r.id].replace(/^images\//,"");
+  return IMG_BASE+filename;
 }
 // imagePickerTarget: "recipe:recipeId" | "draft" — used by handleImageSelect
 function editRecipePhoto(id){
@@ -1822,12 +1817,12 @@ function shareRecipe(id, explicitSv, source){
 }
 
 function renderRecipeCard(r){
-  const img=recipeImg(r);const imgOk=img&&(img.startsWith("http")||img.startsWith("data:"));
+  const img=recipeImg(r);
   const favs=S.favorites||new Set();
   const isFav=favs.has(r.id);
   const ai=antiInflam(r);
   let html=`<div onclick="openRecipe('${esc(r.id)}')" style="background:#fff;border-radius:6px;overflow:hidden;border:1px solid #E8E0D8;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='#5AAAC8'" onmouseout="this.style.borderColor='#E8E0D8'">`;
-  if(imgOk){
+  if(img){
     html+=`<div style="height:148px;min-height:148px;overflow:hidden;position:relative;width:100%">`;
     html+=`<img src="${img}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block" onerror="this.style.display='none'">`;
     html+=`<button onclick="event.stopPropagation();shareRecipe('${esc(r.id)}')" style="position:absolute;top:8px;right:40px;border:none;background:rgba(255,255,255,0.88);border-radius:50%;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;outline:none"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#2E3038\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8\"/><polyline points=\"16 6 12 2 8 6\"/><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"15\"/></svg></button>`;    html+=`<button onclick="event.stopPropagation();toggleFavorite('${esc(r.id)}')" style="position:absolute;top:8px;right:8px;border:none;background:rgba(255,255,255,0.88);border-radius:50%;width:28px;height:28px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;outline:none">${isFav?"❤️":"🤍"}</button>`;
@@ -1882,14 +1877,14 @@ function renderRecipeModal(){
     guestCount=ts.guestCount;
   }
   const ai=antiInflam(r);
-  const modalImg=recipeImg(r);const modalImgOk=modalImg&&(modalImg.startsWith("http")||modalImg.startsWith("data:"));
+  const modalImg=recipeImg(r);
   const isFavModal=(S.favorites||new Set()).has(r.id);
   const isUserRecipe=S.userRecipes.some(x=>x.id===r.id);
   let html=`<div class="modal-overlay center" onclick="if(event.target===this)closeRecipe()">`;
   html+=`<div class="modal-sheet centered" style="max-width:620px">`;
   html+=`<div style="padding:16px 20px 12px;background:${BG};border-bottom:1px solid #E8E3DA;flex-shrink:0">`;
   html+=`<div style="display:flex;justify-content:space-between;align-items:flex-start">`;
-  html+=`<div style="flex:1"><div style="font-size:30px;margin-bottom:5px">${modalImgOk?`<img src="${modalImg}" style="width:46px;height:46px;border-radius:6px;object-fit:cover;vertical-align:middle">`:r.emoji}</div>`;
+  html+=`<div style="flex:1"><div style="font-size:30px;margin-bottom:5px">${modalImg?`<img src="${modalImg}" style="width:46px;height:46px;border-radius:6px;object-fit:cover;vertical-align:middle">`:r.emoji}</div>`;
   html+=`<div style="font-size:16px;font-weight:700;color:#2E3038;line-height:1.3">${esc(r.title)}</div>`;
   html+=`<div style="color:#999;font-size:12px;margin-top:4px">⏱ ${r.time} min · 👥 ${sv} serving${sv!==1?"s":""}</div></div>`;
   html+=`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">`;
@@ -1900,7 +1895,7 @@ function renderRecipeModal(){
   html+=`<button onclick="toggleFavorite('${esc(r.id)}')" style="border:none;background:none;font-size:24px;cursor:pointer;line-height:1;padding:2px">${isFavModal?"❤️":"🤍"}</button>`;
   html+=`<button onclick="closeRecipe()" style="border:none;background:none;font-size:26px;cursor:pointer;color:#BBB;line-height:1;padding:0">×</button>`;
   html+=`</div></div>`;
-  if(modalImgOk)html+=`<div style="margin:10px -20px 0;overflow:hidden;height:190px"><img src="${modalImg}" alt="${esc(r.title)}" style="width:100%;height:190px;object-fit:cover;display:block"></div>`;
+  if(modalImg)html+=`<div style="margin:10px -20px 0;overflow:hidden;height:190px"><img src="${modalImg}" alt="${esc(r.title)}" style="width:100%;height:190px;object-fit:cover;display:block"></div>`;
   if(!fromPlan){
     html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#FFF;border-radius:10px;padding:8px 12px;border:1px solid #E8E3DA">`;
     html+=`<span style="font-size:12px;color:#555;font-weight:600">Servings:</span>`;
@@ -2080,9 +2075,9 @@ function renderPlan(){
       const r=S.plan[i]?.[meal]?.id?all.find(x=>x.id===S.plan[i][meal].id):null;
       const dotCol=meal==="breakfast"?AMBER:meal==="lunch"?TEAL:PINK;
       if(r){
-        const planImg=recipeImg(r);const planImgOk=planImg&&(planImg.startsWith("http")||planImg.startsWith("data:"));
+        const planImg=recipeImg(r);
         html+=`<div style="background:#fff;border:1px solid #E8E0D8;border-radius:6px;overflow:hidden;cursor:pointer" onmouseover="this.style.borderColor='#5AAAC8'" onmouseout="this.style.borderColor='#E8E0D8'">`;
-        if(planImgOk){
+        if(planImg){
           html+=`<div style="height:130px;position:relative;overflow:hidden">`;
           html+=`<img src="${planImg}" style="width:100%;height:100%;object-fit:cover;display:block">`;
           html+=`<div style="position:absolute;top:8px;left:8px;width:9px;height:9px;border-radius:50%;background:${dotCol}"></div>`;
@@ -2638,9 +2633,9 @@ function renderPickerModal(){
   sorted.forEach(r=>{
     const s=score(r);
     const fitColor=s.great?"#16A34A":"#D97706";
-    const pickerImg=recipeImg(r);const pickerImgOk=pickerImg&&(pickerImg.startsWith("http")||pickerImg.startsWith("data:"));
+    const pickerImg=recipeImg(r);
     html+=`<div onclick="pickMeal(${dayIdx},'${mealType}','${esc(r.id)}',S.pickerModal.sv||2)" style="background:${BG};border-radius:10px;overflow:hidden;cursor:pointer;border:1px solid ${s.great?"#86EFAC":"#E8E3DA"};box-shadow:${s.great?"0 0 0 1px #86EFAC40":"none"};transition:all 0.12s" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">`;
-    if(pickerImgOk){html+=`<div style="position:relative;height:90px;overflow:hidden"><img src="${pickerImg}" alt="${esc(r.title)}" style="width:100%;height:90px;object-fit:cover;display:block"><span style="position:absolute;top:5px;right:5px;font-size:9px;font-weight:700;color:#FFF;background:${fitColor};border-radius:6px;padding:2px 5px">${s.great?"✓ Great":"✓ Fits"}</span></div>`;}
+    if(pickerImg){html+=`<div style="position:relative;height:90px;overflow:hidden"><img src="${pickerImg}" alt="${esc(r.title)}" style="width:100%;height:90px;object-fit:cover;display:block"><span style="position:absolute;top:5px;right:5px;font-size:9px;font-weight:700;color:#FFF;background:${fitColor};border-radius:6px;padding:2px 5px">${s.great?"✓ Great":"✓ Fits"}</span></div>`;}
     else{html+=`<div style="height:60px;display:flex;align-items:center;justify-content:space-between;padding:8px 10px"><span style="font-size:26px">${r.emoji}</span><span style="font-size:10px;font-weight:700;color:${fitColor};background:${fitColor}20;border-radius:8px;padding:2px 6px">${s.great?"✓ Great":"✓ Fits"}</span></div>`;}
     html+=`<div style="padding:8px 10px"><div style="font-weight:700;font-size:12px;color:#2E3038;margin-bottom:3px;line-height:1.3">${esc(r.title)}</div>`;
     html+=`<div style="font-size:11px;color:${T};font-weight:700">${r.nutrition.calories} cal · ${r.nutrition.protein}g P</div>`;
@@ -2718,9 +2713,9 @@ function renderWizardPicker(){
   html+=`<div style="overflow-y:auto;padding:16px;flex:1"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">`;
   shown.forEach(r=>{
     const sel=selected.includes(r.id);
-    const wzImg=recipeImg(r);const wzImgOk=wzImg&&(wzImg.startsWith("http")||wzImg.startsWith("data:"));
+    const wzImg=recipeImg(r);
     html+=`<div onclick="toggleWizardRecipe('${esc(picker.type)}','${esc(r.id)}')" style="background:${sel?G+"15":BG};border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid ${sel?G:"#E8E3DA"};position:relative;transition:all 0.15s">`;
-    if(wzImgOk)html+=`<div style="position:relative;height:110px;overflow:hidden"><img src="${wzImg}" alt="${esc(r.title)}" style="width:100%;height:110px;object-fit:cover;display:block"></div>`;
+    if(wzImg)html+=`<div style="position:relative;height:110px;overflow:hidden"><img src="${wzImg}" alt="${esc(r.title)}" style="width:100%;height:110px;object-fit:cover;display:block"></div>`;
     else html+=`<div style="text-align:center;padding:14px 14px 0;font-size:30px">${r.emoji}</div>`;
     if(sel)html+=`<div style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;background:${G};display:flex;align-items:center;justify-content:center;color:#FFF;font-size:13px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,0.3)">✓</div>`;
     html+=`<div style="padding:${wzImg?"10px":"8px"} 12px 12px"><div style="font-weight:700;font-size:13px;color:#2E3038;margin-bottom:4px;line-height:1.35">${esc(r.title)}</div>`;
@@ -3261,8 +3256,8 @@ function exportWeeklyPDF(){
   h+="<button class='printbtn' onclick='window.print()'>Print / Save as PDF</button>";
   planned.forEach(item=>{
     const r=item.recipe;
-    const _rImg=recipeImg(r);const _rImgOk=_rImg&&(_rImg.startsWith("http")||_rImg.startsWith("data:"));
-    const imgSrc=_rImgOk?_rImg:null;
+    const _rImg=recipeImg(r);
+    const imgSrc=_rImg||null;
     // PDF: selected servings only — no guest state, no plan frequency
     const sv=item.sv||r.servings||1;
     const pdfFactor=sv/(r.servings||1);
