@@ -12,6 +12,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
+    :root{
+      --text-primary: rgba(27,27,27,1);
+      --text-secondary: rgba(85,85,85,1);
+      --text-tertiary: rgba(120,120,120,1);
+    }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
     html,body{height:100%;background:#F0EBE6;font-family:'Montserrat',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
     body{overflow-y:auto;-webkit-overflow-scrolling:touch}
@@ -1367,6 +1372,21 @@ function combineIngredients(items){
 // totalServings = selectedServings + guestCount
 // selectedServings: what the user chose in the planner for this slot
 // planCount is for scheduling only — NOT used in cooking/scaling math
+function getSlotServingModel(dayIdx,meal){
+  const slot=S.plan?.[dayIdx]?.[meal];
+  if(!slot)return null;
+  // slot.servings is the new source of truth; fall back to getSv for plans
+  // created before slot.servings was introduced (backward compat)
+  const baseServings=slot.servings||getSv(dayIdx,meal)||1;
+  const guests=slot.guests||0;
+  const totalServings=baseServings+guests;
+  const ingredientFactor=totalServings/baseServings;
+  const nutritionScale=slot.scale||1;
+  const servingText=guests>0
+    ?`${baseServings} + ${guests} guests`
+    :`${baseServings} serving${baseServings!==1?"s":""}`;
+  return{baseServings,guests,totalServings,ingredientFactor,nutritionScale,servingText};
+}
 function getTotalServings(recipeId, selectedServings){
   const r=allRecipes().find(x=>x.id===recipeId);
   if(!r)return{totalServings:1,factor:1,baseServings:1,selectedServings:1,guestCount:0};
@@ -1466,11 +1486,11 @@ function autoFill(plan,recipes,settings,days){
       const dynTarget=calcDynamicScale(np[d],startMeal,target/3,recipes,target)*(target/3);
       const r=pickBest(mains,dynTarget,settings.protein*(startMeal==="dinner"?0.45:0.3),protSoFar);
       if(!r||wouldDupe(d,startMeal,r.id))continue;
-      np[d]={...np[d],[startMeal]:{id:r.id,scale:calcDynamicScale(np[d],startMeal,r.nutrition.calories,recipes,target)}};setSv(d,startMeal,2);cooked.add(r.id);
+      np[d]={...np[d],[startMeal]:{id:r.id,scale:calcDynamicScale(np[d],startMeal,r.nutrition.calories,recipes,target),servings:2}};cooked.add(r.id);
       const oppMeal=opp[startMeal];
       let filled2=false;
-      for(let d2=d+1;d2<days;d2++){if(!np[d2][oppMeal]&&!wouldDupe(d2,oppMeal,r.id)){np[d2]={...np[d2],[oppMeal]:{id:r.id,scale:calcDynamicScale(np[d2],oppMeal,r.nutrition.calories,recipes,target)}};setSv(d2,oppMeal,2);filled2=true;break;}}
-      if(!filled2){for(let d2=d-1;d2>=0;d2--){if(!np[d2][oppMeal]&&!wouldDupe(d2,oppMeal,r.id)){np[d2]={...np[d2],[oppMeal]:{id:r.id,scale:calcDynamicScale(np[d2],oppMeal,r.nutrition.calories,recipes,target)}};setSv(d2,oppMeal,2);break;}}}
+      for(let d2=d+1;d2<days;d2++){if(!np[d2][oppMeal]&&!wouldDupe(d2,oppMeal,r.id)){np[d2]={...np[d2],[oppMeal]:{id:r.id,scale:calcDynamicScale(np[d2],oppMeal,r.nutrition.calories,recipes,target),servings:2}};filled2=true;break;}}
+      if(!filled2){for(let d2=d-1;d2>=0;d2--){if(!np[d2][oppMeal]&&!wouldDupe(d2,oppMeal,r.id)){np[d2]={...np[d2],[oppMeal]:{id:r.id,scale:calcDynamicScale(np[d2],oppMeal,r.nutrition.calories,recipes,target),servings:2}};break;}}}
     }
   }
   fillBatch("dinner");
@@ -1700,9 +1720,9 @@ function renderLibrary(){
   ];
   let html=`<div style="background:#EDE8E2;padding:14px 28px;border-bottom:1px solid #E0D8D0;display:flex;align-items:center;gap:20px;flex-wrap:wrap">`;
   html+=`<div style="position:relative;display:flex;align-items:center;flex:1;max-width:300px">`;
-  html+=`<svg style="position:absolute;left:12px;color:#C0B8C0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C0B8C0" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+  html+=`<svg style="position:absolute;left:12px;color:var(--text-tertiary)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
   html+=`<input id="lib-search" data-focus-id="lib-search" class="inp" value="${esc(q)}" placeholder="Search recipes..." style="padding-left:36px;padding-right:${q?32:12}px" oninput="S.lib.q=this.value;render()">`;
-  if(q)html+=`<button onclick="S.lib.q='';render()" style="position:absolute;right:8px;border:none;background:none;font-size:16px;color:#B0A8B0;line-height:1;padding:0;cursor:pointer">×</button>`;
+  if(q)html+=`<button onclick="S.lib.q='';render()" style="position:absolute;right:8px;border:none;background:none;font-size:16px;color:var(--text-tertiary);line-height:1;padding:0;cursor:pointer">×</button>`;
   html+=`</div>`;
   filterDefs.forEach(({f,label,icon})=>{
     const isOn=filter===f;
@@ -1724,7 +1744,7 @@ function renderLibrary(){
     html+=`<div style="margin-top:22px;border-top:1px solid #E8E0D8;padding-top:16px">`;
     html+=`<button onclick="S.lib.showDeleted=!S.lib.showDeleted;render()" style="display:flex;align-items:center;gap:6px;border:none;background:none;padding:0;cursor:pointer;outline:none;margin-bottom:${showDeleted?12:0}px">`;
     html+=`<span style="font-size:11px;font-weight:700;color:#B0A0A0;text-transform:uppercase;letter-spacing:0.8px">🗑 Recently Deleted (${deleted.length})</span>`;
-    html+=`<span style="font-size:10px;color:#C0B0B0">${showDeleted?"▲":"▼"}</span>`;
+    html+=`<span style="font-size:10px;color:var(--text-tertiary)">${showDeleted?"▲":"▼"}</span>`;
     html+=`</button>`;
     if(showDeleted){
       deleted.forEach(r=>{
@@ -1747,24 +1767,33 @@ function renderLibrary(){
 }
 function shareRecipe(id, explicitSv, source){
   const r=allRecipes().find(x=>x.id===id);if(!r)return;
-  // Explicit params from modal button take precedence; fall back to modal state then base
   const modalSource=source||(S.recipeModal?.id===id?S.recipeModal.source:"library");
-  const baseServings=r.servings||1;
-  let sv,factor,servingLabel;
-  if(modalSource==="library"){
-    // Library: use ONLY the passed/modal sv — no guests, no plan state
-    sv=explicitSv||(S.recipeModal?.id===id?S.recipeModal.sv:null)||baseServings;
-    factor=sv/baseServings;
-    servingLabel=sv+" serving"+(sv!==1?"s":"");
+  let baseServings,guests,totalServings,factor,nutritionScale,servingLabel;
+
+  if(modalSource==="plan"&&S.recipeModal?.dayIdx!=null){
+    // Plan: use getSlotServingModel — same source as modal and weekly PDF
+    const model=getSlotServingModel(S.recipeModal.dayIdx,S.recipeModal.meal);
+    if(model){
+      baseServings=model.baseServings;
+      guests=model.guests;
+      totalServings=model.totalServings;
+      factor=model.ingredientFactor;
+      nutritionScale=model.nutritionScale;
+      servingLabel=model.servingText;
+    }else{
+      baseServings=r.servings||1;guests=0;totalServings=baseServings;
+      factor=1;nutritionScale=1;servingLabel=baseServings+" serving"+(baseServings!==1?"s":"");
+    }
   }else{
-    // Plan: use slot servings + guests
-    const slotSv=S.recipeModal?.dayIdx!=null?getSv(S.recipeModal.dayIdx,S.recipeModal.meal):baseServings;
-    const ts=getTotalServings(id,slotSv);
-    sv=ts.totalServings;
-    factor=ts.factor;
-    servingLabel=sv+" serving"+(sv!==1?"s":"")+(ts.guestCount>0?" + "+ts.guestCount+" guests":"");
+    // Library: modal-local sv only, no slot
+    const base=r.servings||1;
+    const sv=explicitSv||(S.recipeModal?.id===id?S.recipeModal.sv:null)||base;
+    baseServings=sv;guests=0;totalServings=sv;
+    factor=sv/base;nutritionScale=factor;
+    servingLabel=sv+" serving"+(sv!==1?"s":"");
   }
-  const ingLabel=factor!==1?"Ingredients for "+sv+" servings":"Ingredients";
+
+  const ingLabel=factor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients";
   const imgSrc=recipeImg(r)?new URL(recipeImg(r),window.location.href).href:null;
   const mc=r.type==="breakfast"?"#F0A500":"#C8A0D8";
   let h2="<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
@@ -1802,11 +1831,11 @@ function shareRecipe(id, explicitSv, source){
   h2+="</div></div>";
   if(r.nutrition){
     h2+="<div class='nutr'>";
-    h2+="<div class='nc'><div class='nv' style='color:#F0A500'>"+Math.round(r.nutrition.calories*factor)+"</div><div class='nl'>Cal</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+Math.round(r.nutrition.protein*factor)+"g</div><div class='nl'>Protein</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#2E3038'>"+Math.round(r.nutrition.carbs*factor)+"g</div><div class='nl'>Carbs</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+Math.round(r.nutrition.fat*factor)+"g</div><div class='nl'>Fat</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+Math.round((r.nutrition.fiber||0)*factor)+"g</div><div class='nl'>Fibre</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#F0A500'>"+Math.round(r.nutrition.calories*nutritionScale)+"</div><div class='nl'>Cal</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+Math.round(r.nutrition.protein*nutritionScale)+"g</div><div class='nl'>Protein</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#2E3038'>"+Math.round(r.nutrition.carbs*nutritionScale)+"g</div><div class='nl'>Carbs</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+Math.round(r.nutrition.fat*nutritionScale)+"g</div><div class='nl'>Fat</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+Math.round((r.nutrition.fiber||0)*nutritionScale)+"g</div><div class='nl'>Fibre</div></div>";
     h2+="</div>";
   }
   h2+="<div class='footer'>DIMPLE'S KITCHEN - Shared from my weekly meal plan</div>";
@@ -1838,7 +1867,7 @@ function renderRecipeCard(r){
   html+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${ai.length?7:0}px">`;
   html+=`<span style="background:#FFF5E0;border:1px solid #F0D090;border-radius:3px;padding:3px 7px;font-size:9px;font-weight:700;color:#C87800">${r.nutrition.calories} cal</span>`;
   html+=`<span style="background:#E8F6FB;border:1px solid #A0D4E8;border-radius:3px;padding:3px 7px;font-size:9px;font-weight:700;color:#3A8AAA">${r.nutrition.protein}g P</span>`;
-  html+=`<span style="background:#F5F0EE;border:1px solid #E0D8D8;border-radius:3px;padding:3px 7px;font-size:9px;font-weight:700;color:#9A9098">${r.time} min</span>`;
+  html+=`<span style="background:#F5F0EE;border:1px solid #E0D8D8;border-radius:3px;padding:3px 7px;font-size:9px;font-weight:600;color:var(--text-secondary)">${r.time} min</span>`;
   html+=`</div>`;
   if(ai.length>0){html+=`<div style="display:flex;flex-wrap:wrap;gap:4px">`;ai.forEach(i=>{html+=`<span style="background:#E8F6FB;border:1px solid #A0D4E8;color:#3A8AAA;border-radius:10px;padding:1px 7px;font-size:9px">🌿 ${esc(i)}</span>`;});html+=`</div>`;}
   const isUserR=S.userRecipes.some(x=>x.id===r.id);
@@ -1848,10 +1877,10 @@ function renderRecipeCard(r){
 }
 
 // ── RECIPE MODAL ───────────────────────────────────────────────────────────────
-function openRecipe(id,scale,dayIdx,meal){
+function openRecipe(id,scale,dayIdx,meal,source){
   const r=allRecipes().find(x=>x.id===id);if(!r)return;
-  const source=dayIdx!=null?"plan":"library";
-  S.recipeModal={id,chkI:{},chkS:{},sv:r.servings||1,scale:scale||1,dayIdx:dayIdx??null,meal:meal??null,source};renderModals();
+  const src=source||(dayIdx!=null?"plan":"library");
+  S.recipeModal={id,chkI:{},chkS:{},sv:r.servings||1,scale:scale||1,dayIdx:dayIdx??null,meal:meal??null,source:src};renderModals();
 }
 function closeRecipe(){S.recipeModal=null;renderModals();}
 function renderRecipeModal(){
@@ -1860,22 +1889,38 @@ function renderRecipeModal(){
   const{chkI,chkS,sv}=S.recipeModal;
   const source=S.recipeModal.source||"library";
   const fromPlan=source==="plan";
+  const dayIdx=S.recipeModal.dayIdx;
+  const meal=S.recipeModal.meal;
 
-  let factor,displayServings,guestCount;
-  if(source==="library"){
-    // Library: pure modal-local sv. No plan state, no guest state.
-    const baseServings=r.servings||1;
-    factor=sv/baseServings;
-    displayServings=sv;
-    guestCount=0;
+  // ── SERVING MODEL ──────────────────────────────────────────────────────────
+  const isPlan=fromPlan;
+  const isBreakfast=meal==="breakfast";
+  let factor,totalServings,nutritionScale,servingText,myServings;
+
+  if(isPlan){
+    const model=getSlotServingModel(dayIdx,meal);
+    if(model){
+      myServings=model.baseServings;
+      totalServings=model.totalServings;
+      factor=model.ingredientFactor;
+      nutritionScale=model.nutritionScale;
+      servingText=model.servingText;
+    }else{
+      // slot not found — safe defaults
+      myServings=1;totalServings=1;factor=1;nutritionScale=1;
+      servingText="1 serving";
+    }
   }else{
-    // Plan: slot-selected servings + saved guests via getTotalServings
-    const slotSv=getSv(S.recipeModal.dayIdx,S.recipeModal.meal);
-    const ts=getTotalServings(r.id,slotSv);
-    factor=ts.factor;
-    displayServings=ts.totalServings;
-    guestCount=ts.guestCount;
+    // Library: modal-local sv only, no slot
+    const baseServings=r.servings||1;
+    myServings=sv||baseServings;
+    totalServings=myServings;
+    factor=myServings/baseServings;
+    nutritionScale=factor;
+    servingText=`${myServings} serving${myServings!==1?"s":""}`;
   }
+  // ───────────────────────────────────────────────────────────────────────────
+
   const ai=antiInflam(r);
   const modalImg=recipeImg(r);
   const isFavModal=(S.favorites||new Set()).has(r.id);
@@ -1886,32 +1931,40 @@ function renderRecipeModal(){
   html+=`<div style="display:flex;justify-content:space-between;align-items:flex-start">`;
   html+=`<div style="flex:1"><div style="font-size:30px;margin-bottom:5px">${modalImg?`<img src="${modalImg}" style="width:46px;height:46px;border-radius:6px;object-fit:cover;vertical-align:middle">`:r.emoji}</div>`;
   html+=`<div style="font-size:16px;font-weight:700;color:#2E3038;line-height:1.3">${esc(r.title)}</div>`;
-  html+=`<div style="color:#999;font-size:12px;margin-top:4px">⏱ ${r.time} min · 👥 ${sv} serving${sv!==1?"s":""}</div></div>`;
+  html+=`<div style="color:var(--text-secondary);font-weight:500;font-size:12px;margin-top:4px">⏱ ${r.time} min · 👥 ${servingText}</div></div>`;
   html+=`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">`;
   if(isUserRecipe)html+=`<button onclick="openEditModal('${esc(r.id)}')" style="border:1px solid #D0C8C8;background:#FAF7F5;color:#7A6A6A;border-radius:4px;font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.5px">Edit</button>`;
   if(isUserRecipe)html+=`<button onclick="softDeleteRecipe('${esc(r.id)}')" style="border:1px solid #F0C8C8;background:#FDF5F5;color:#C04040;border-radius:4px;font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.5px">Delete</button>`;
   html+=`<button onclick="editRecipePhoto('${esc(r.id)}')" style="border:1px solid #D8D0E8;background:#F8F5FC;color:#8A6AAA;border-radius:4px;font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.5px">📷 Photo</button>`;
   html+=`<button onclick="shareRecipe('${esc(r.id)}',S.recipeModal.sv,S.recipeModal.source)" style="border:none;background:none;cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center" title="Share"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2E3038" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button>`;
   html+=`<button onclick="toggleFavorite('${esc(r.id)}')" style="border:none;background:none;font-size:24px;cursor:pointer;line-height:1;padding:2px">${isFavModal?"❤️":"🤍"}</button>`;
-  html+=`<button onclick="closeRecipe()" style="border:none;background:none;font-size:26px;cursor:pointer;color:#BBB;line-height:1;padding:0">×</button>`;
+  html+=`<button onclick="closeRecipe()" style="border:none;background:none;font-size:26px;cursor:pointer;color:var(--text-tertiary);line-height:1;padding:0">×</button>`;
   html+=`</div></div>`;
   if(modalImg)html+=`<div style="margin:10px -20px 0;overflow:hidden;height:190px"><img src="${modalImg}" alt="${esc(r.title)}" style="width:100%;height:190px;object-fit:cover;display:block"></div>`;
-  if(!fromPlan){
+  // Show serving selector: always in library; in plan only for breakfast
+  const showSelector=!fromPlan||(fromPlan&&isBreakfast);
+  if(showSelector){
+    const activeSv=myServings;
     html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#FFF;border-radius:10px;padding:8px 12px;border:1px solid #E8E3DA">`;
     html+=`<span style="font-size:12px;color:#555;font-weight:600">Servings:</span>`;
-    [1,2,4,6,8].forEach(s=>{html+=`<button onclick="S.recipeModal.sv=${s};renderModals()" style="width:30px;height:30px;border-radius:50%;border:1.5px solid ${sv===s?G:"#DDD"};background:${sv===s?G:"#FFF"};color:${sv===s?"#FFF":"#555"};font-size:12px;font-weight:700;cursor:pointer">${s}</button>`;});
+    [1,2,4,6,8].forEach(s=>{
+      const onclick=fromPlan
+        ?`if(S.plan[${dayIdx}]&&S.plan[${dayIdx}]['${meal}'])S.plan[${dayIdx}]['${meal}'].servings=${s};renderModals()`
+        :`S.recipeModal.sv=${s};renderModals()`;
+      html+=`<button onclick="${onclick}" style="width:30px;height:30px;border-radius:50%;border:1.5px solid ${activeSv===s?G:"#DDD"};background:${activeSv===s?G:"#FFF"};color:${activeSv===s?"#FFF":"#555"};font-size:12px;font-weight:700;cursor:pointer">${s}</button>`;
+    });
     html+=`</div>`;
   }
   html+=`<div style="font-size:11px;color:#555;font-weight:600;margin-top:10px;margin-bottom:6px">Per serving</div>`;
   html+=`<div style="display:flex;flex-wrap:wrap;gap:5px">`;
   [["Cal",r.nutrition.calories,"",T],["Protein",r.nutrition.protein,"g",G],["Carbs",r.nutrition.carbs,"g","#8B6914"],["Fat",r.nutrition.fat,"g","#6B3FA0"],["Fiber",r.nutrition.fiber,"g","#1E7A8A"],["Sodium",r.nutrition.sodium||0,"mg","#888"]].forEach(([l,v,u,c])=>{
-    html+=`<div style="background:${c}20;border:1px solid ${c}30;border-radius:8px;padding:4px 10px;text-align:center"><div style="font-size:10px;color:#666">${l}</div><div style="font-size:15px;font-weight:800;color:${c}">${Math.round(v||0)}${u}</div></div>`;
+    html+=`<div style="background:${c}20;border:1px solid ${c}30;border-radius:8px;padding:4px 10px;text-align:center"><div style="font-size:10px;color:#666">${l}</div><div style="font-size:15px;font-weight:800;color:${c}">${Math.round((v||0)*nutritionScale)}${u}</div></div>`;
   });
   html+=`</div>`;
   if(ai.length>0){html+=`<div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">`;ai.forEach(i=>{html+=`<span style="background:#ECFDF5;border:1px solid #6EE7B7;color:#065F46;border-radius:10px;padding:2px 9px;font-size:11px">🌿 ${esc(i)}</span>`;});html+=`</div>`;}
   html+=`</div>`;
   html+=`<div style="overflow-y:auto;padding:16px 20px;flex:1">`;
-  html+=`<h3 style="font-size:14px;font-weight:700;color:#2E3038;margin:0 0 10px">Ingredients${factor>1?` <span style="color:#666;font-size:11px;font-weight:500">(cook once for ${displayServings} servings)</span>`:""}</h3>`;
+  html+=`<h3 style="font-size:14px;font-weight:700;color:#2E3038;margin:0 0 10px">Ingredients${factor!==1?` <span style="color:#666;font-size:11px;font-weight:500">(for ${totalServings} serving${totalServings!==1?"s":""})</span>`:""}</h3>`;
   r.ingredients.forEach((ing,idx)=>{
     const chk=chkI[idx];
     html+=`<div onclick="S.recipeModal.chkI[${idx}]=!S.recipeModal.chkI[${idx}];renderModals()" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F0EDE8;cursor:pointer;opacity:${chk?0.45:1}">`;
@@ -1966,17 +2019,17 @@ function renderPlan(){
   // Clear
   html+=`<button onclick="backupPlan();S.plan=Array(7).fill(null).map(()=>({breakfast:null,lunch:null,dinner:null}));S.extras={};S.checked={};save('extras3',S.extras);persistPlan();render()" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;padding:0;cursor:pointer;outline:none">`;
   html+=`<div style="width:42px;height:42px;border-radius:50%;background:#E8E0DC;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B0A8B0" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`;
-  html+=`<span style="font-size:8px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#B0A8B0">Clear</span></button>`;
+  html+=`<span style="font-size:8px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--text-tertiary)">Clear</span></button>`;
   // PDF
   html+=`<button onclick="exportWeeklyPDF()" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;padding:0;cursor:pointer;outline:none;margin-left:auto">`;
   html+=`<div style="width:42px;height:42px;border-radius:50%;background:#E8E0DC;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9A9098" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>`;
-  html+=`<span style="font-size:8px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#9A9098">PDF</span></button>`;
+  html+=`<span style="font-size:8px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--text-secondary)">PDF</span></button>`;
   html+=`</div>`;
 
   // ── WIZARD ──
   if(showWizard){
     html+=`<div style="background:#F0EBE6;padding:24px 28px">`;
-    html+=`<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button onclick="S.planState.wizard={breakfastIds:[],dinnerIds:[],dinnerServings:{}};render()" style="font-size:11px;font-weight:700;color:#9A9098;border:1.5px solid #D8D0C8;background:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">x Clear wizard</button></div>`;
+    html+=`<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button onclick="S.planState.wizard={breakfastIds:[],dinnerIds:[],dinnerServings:{}};render()" style="font-size:11px;font-weight:700;color:var(--text-secondary);border:1.5px solid #D8D0C8;background:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">x Clear wizard</button></div>`;
     html+=`<div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:20px">`;
     // Step 1
     html+=`<div style="background:#fff;border:1px solid #E8E0D8;border-radius:8px;padding:18px">`;
@@ -2016,7 +2069,7 @@ function renderPlan(){
       html+=chipImg?`<img src="${chipImg}" style="width:48px;height:48px;object-fit:cover;flex-shrink:0">`:`<div style="width:48px;height:48px;background:#F5F0EA;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${dr?dr.emoji:"🍽"}</div>`;
       html+=`<div style="flex:1;padding:6px 8px"><div style="font-size:10px;font-weight:600;color:#2E3038;line-height:1.3">${esc(dr?dr.title:"")}</div><div style="font-size:9px;color:#F0A500;font-weight:700;margin-top:2px">${dr?dr.nutrition.calories:""} cal</div></div>`;
       html+=`<button onclick="S.planState.wizard.dinnerIds=S.planState.wizard.dinnerIds.filter(x=>x!=='${id}');delete S.planState.wizard.dinnerServings['${id}'];render()" style="border:none;background:none;color:#C8C0CC;font-size:14px;cursor:pointer;padding:0 8px;flex-shrink:0;outline:none">×</button></div>`;
-      html+=`<div style="display:flex;align-items:center;gap:4px;padding:6px 8px;flex-wrap:wrap"><span style="font-size:8px;font-weight:700;color:#B0A8B0;text-transform:uppercase;letter-spacing:0.5px">Servings:</span>`;
+      html+=`<div style="display:flex;align-items:center;gap:4px;padding:6px 8px;flex-wrap:wrap"><span style="font-size:8px;font-weight:700;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Servings:</span>`;
       html+=[1,2,4,6].map(s=>`<button onclick="S.planState.wizard.dinnerServings['${id}']=${s};render()" style="font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;padding:3px 9px;border:1.5px solid ${dSv===s?AMBER:"#E0D8D0"};border-radius:4px;background:${dSv===s?"#FFF3D0":"#fff"};color:${dSv===s?"#C87800":"#A8A0B0"};cursor:pointer;outline:none">${s}</button>`).join("");
       html+=`</div></div>`;
     });
@@ -2043,7 +2096,7 @@ function renderPlan(){
     html+=`<div style="flex:1;text-align:center;${i<4?"border-right:1px solid #EDE5E0;":""}padding:0 8px">`;
     html+=`<div style="font-size:8px;font-weight:700;color:#B8B0B8;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">${s.l}</div>`;
     html+=`<div style="font-size:18px;font-weight:800;color:${s.c}">${s.v}${s.u}</div>`;
-    html+=`<div style="font-size:9px;color:#C8C0C8;margin-top:2px;font-weight:500">goal ${s.t}${s.u}</div>`;
+    html+=`<div style="font-size:9px;color:var(--text-secondary);margin-top:2px;font-weight:500">goal ${s.t}${s.u}</div>`;
     html+=`<div style="height:3px;margin-top:6px;background:#EDE5E0;border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${s.c};border-radius:2px"></div></div>`;
     html+=`</div>`;
   });
@@ -2075,45 +2128,49 @@ function renderPlan(){
       const r=S.plan[i]?.[meal]?.id?all.find(x=>x.id===S.plan[i][meal].id):null;
       const dotCol=meal==="breakfast"?AMBER:meal==="lunch"?TEAL:PINK;
       if(r){
+        const slot=S.plan[i][meal];
+        const slotScale=slot?.scale||1;
         const planImg=recipeImg(r);
-        html+=`<div style="background:#fff;border:1px solid #E8E0D8;border-radius:6px;overflow:hidden;cursor:pointer" onmouseover="this.style.borderColor='#5AAAC8'" onmouseout="this.style.borderColor='#E8E0D8'">`;
+        // Outer container: NO onclick — click zones are explicit below
+        html+=`<div style="background:#fff;border:1px solid #E8E0D8;border-radius:6px;overflow:hidden" onmouseover="this.style.borderColor='#5AAAC8'" onmouseout="this.style.borderColor='#E8E0D8'">`;
+        // ── SLOT BODY: dedicated click zone for opening modal ─────────────────
+        html+=`<div onclick="openRecipe('${esc(r.id)}',${slotScale},${i},'${meal}','plan')" style="cursor:pointer">`;
         if(planImg){
           html+=`<div style="height:130px;position:relative;overflow:hidden">`;
-          html+=`<img src="${planImg}" style="width:100%;height:100%;object-fit:cover;display:block">`;
-          html+=`<div style="position:absolute;top:8px;left:8px;width:9px;height:9px;border-radius:50%;background:${dotCol}"></div>`;
-          // Batch badge
+          html+=`<img src="${planImg}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none">`;
+          html+=`<div style="position:absolute;top:8px;left:8px;width:9px;height:9px;border-radius:50%;background:${dotCol};pointer-events:none"></div>`;
           let recipeCount=0;for(let pi=0;pi<S.days;pi++){["breakfast","lunch","dinner"].forEach(bm=>{if(S.plan[pi]?.[bm]?.id===r.id)recipeCount++;});}
-          const guestC=(S.guestServings||{})[r.id]||0;
+          const guestC=S.plan[i][meal]?.guests||0;
           const batchLabel=recipeCount>1&&guestC>0?`x${recipeCount} + ${guestC} guests`:recipeCount>1?`x${recipeCount} this week`:guestC>0?`+${guestC} guests`:"";
-          if(batchLabel)html+=`<div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;letter-spacing:0.3px;font-family:'Montserrat',sans-serif">${batchLabel}</div>`;
-          html+=`<button onclick="clearMeal(${i},'${meal}')" style="position:absolute;top:6px;right:6px;border:none;background:rgba(255,255,255,0.9);color:#9A9098;font-size:12px;cursor:pointer;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;outline:none">×</button>`;
+          if(batchLabel)html+=`<div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;letter-spacing:0.3px;font-family:'Montserrat',sans-serif;pointer-events:none">${batchLabel}</div>`;
           html+=`</div>`;
         } else {
           const bgCol=meal==="breakfast"?"#FFF8EE":"#F5F0EA";
           html+=`<div style="height:130px;background:${bgCol};display:flex;align-items:center;justify-content:center;font-size:44px;position:relative">`;
-          html+=`${r.emoji}`;
-          html+=`<div style="position:absolute;top:8px;left:8px;width:9px;height:9px;border-radius:50%;background:${dotCol}"></div>`;
-          html+=`<button onclick="clearMeal(${i},'${meal}')" style="position:absolute;top:6px;right:6px;border:none;background:rgba(255,255,255,0.9);color:#9A9098;font-size:12px;cursor:pointer;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;outline:none">×</button>`;
+          html+=`<span style="pointer-events:none">${r.emoji}</span>`;
+          html+=`<div style="position:absolute;top:8px;left:8px;width:9px;height:9px;border-radius:50%;background:${dotCol};pointer-events:none"></div>`;
           html+=`</div>`;
         }
-        html+=`<div style="padding:10px 12px">`;
-        html+=`<div style="font-size:8px;font-weight:700;color:#C0B8C0;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">${meal==="breakfast"?"☀️ Breakfast":meal==="lunch"?"🌤 Lunch":"🌙 Dinner"}</div>`;
-        const slot=S.plan[i][meal];
-        const slotScale=slot?.scale||1;
+        html+=`<div style="padding:10px 12px 4px">`;
+        html+=`<div style="font-size:8px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">${meal==="breakfast"?"☀️ Breakfast":meal==="lunch"?"🌤 Lunch":"🌙 Dinner"}</div>`;
         const scaledCal=Math.round(r.nutrition.calories*slotScale);
         const scaledProt=Math.round(r.nutrition.protein*slotScale);
-        html+=`<div onclick="openRecipe('${esc(r.id)}',${slotScale},${i},'${meal}')" style="font-size:11px;font-weight:600;color:#2E3038;line-height:1.35;margin-bottom:6px;cursor:pointer">${esc(r.title)}</div>`;
-        html+=`<div style="display:flex;justify-content:space-between;align-items:center;gap:4px">`;
+        html+=`<div style="font-size:11px;font-weight:600;color:#2E3038;line-height:1.35;margin-bottom:4px">${esc(r.title)}</div>`;
         html+=`<span style="font-size:10px;font-weight:700;color:#F0A500">${scaledCal} cal · ${scaledProt}g P</span>`;
-        html+=`<div style="display:flex;gap:4px">`;
-        html+=`<button onclick="event.stopPropagation();openPicker(${i},'${meal}')" style="font-size:8px;font-weight:700;color:#C8A0D8;border:1px solid #DCC8E8;background:#F8F0FC;padding:2px 7px;cursor:pointer;border-radius:2px;font-family:'Montserrat',sans-serif;outline:none">Replace</button>`;
-        html+=`<button onclick="event.stopPropagation();openGuestScale('${esc(r.id)}')" style="font-size:8px;font-weight:700;color:#5AAAC8;border:1px solid #A8D8E8;background:#E8F6FB;padding:2px 7px;cursor:pointer;border-radius:2px;font-family:'Montserrat',sans-serif;outline:none">Guests?</button>`;
-        html+=`</div></div></div></div>`;
+        html+=`</div>`;
+        html+=`</div>`;
+        // ── ACTION BUTTONS: siblings of slot-body, no nesting conflict ────────
+        html+=`<div style="display:flex;gap:4px;padding:6px 10px 8px;border-top:1px solid #F0EDE8">`;
+        html+=`<button onclick="openPicker(${i},'${meal}')" style="flex:1;font-size:8px;font-weight:700;color:#C8A0D8;border:1px solid #DCC8E8;background:#F8F0FC;padding:3px 0;cursor:pointer;border-radius:2px;font-family:'Montserrat',sans-serif;outline:none">Replace</button>`;
+        html+=`<button onclick="openGuestScale('${esc(r.id)}',${i},'${meal}')" style="flex:1;font-size:8px;font-weight:700;color:#5AAAC8;border:1px solid #A8D8E8;background:#E8F6FB;padding:3px 0;cursor:pointer;border-radius:2px;font-family:'Montserrat',sans-serif;outline:none">Guests?</button>`;
+        html+=`<button onclick="clearMeal(${i},'${meal}')" style="font-size:8px;font-weight:700;color:#C04040;border:1px solid #F0C8C8;background:#FDF5F5;padding:3px 7px;cursor:pointer;border-radius:2px;font-family:'Montserrat',sans-serif;outline:none">×</button>`;
+        html+=`</div>`;
+        html+=`</div>`;
       } else {
         html+=`<div onclick="openPicker(${i},'${meal}')" style="background:#FAF8F5;border:1.5px dashed #D8D0C8;border-radius:6px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;min-height:210px" onmouseover="this.style.borderColor='#5AAAC8';this.style.background='#EEF7FB'" onmouseout="this.style.borderColor='#D8D0C8';this.style.background='#FAF8F5'">`;
         html+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:20px">`;
         html+=`<div style="font-size:24px;color:#C8C0BC;line-height:1;font-weight:300">+</div>`;
-        html+=`<div style="font-size:9px;font-weight:700;color:#C8C0C0;text-transform:uppercase;letter-spacing:0.8px">Pick a ${meal}</div>`;
+        html+=`<div style="font-size:9px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px">Pick a ${meal}</div>`;
         html+=`</div>`;
         html+=`<div style="padding:10px 12px;border-top:1px solid #EDE5E0">`;
         html+=`<div style="font-size:8px;font-weight:700;color:#C8C0C0;text-transform:uppercase;letter-spacing:1.2px">${meal==="breakfast"?"☀️ Breakfast":meal==="lunch"?"🌤 Lunch":"🌙 Dinner"}</div>`;
@@ -2161,9 +2218,9 @@ function renderDaySummary(dayIdx){
 
   function chip(label,actual,target,unit,color){
     return`<div style="display:flex;flex-direction:column;align-items:center;flex:1;padding:5px 4px;border-right:1px solid #EDE8E2">
-      <span style="font-size:9px;font-weight:700;color:#B0A8B0;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:2px">${label}</span>
+      <span style="font-size:9px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px">${label}</span>
       <span style="font-size:11px;font-weight:700;color:${color};white-space:nowrap">${actual}${unit}</span>
-      <span style="font-size:9px;color:#C0B8C0;margin-top:1px">/ ${target}${unit}</span>
+      <span style="font-size:9px;color:var(--text-secondary);font-weight:500;margin-top:1px">/ ${target}${unit}</span>
     </div>`;
   }
 
@@ -2171,9 +2228,9 @@ function renderDaySummary(dayIdx){
   html+=chip("Calories",n.calories,t.calories||1700," cal",cCol);
   html+=chip("Protein",n.protein,t.protein||110,"g",pCol);
   html+=`<div style="display:flex;flex-direction:column;align-items:center;flex:1;padding:5px 4px">
-    <span style="font-size:9px;font-weight:700;color:#B0A8B0;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:2px">Fiber</span>
+    <span style="font-size:9px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px">Fiber</span>
     <span style="font-size:11px;font-weight:700;color:${fCol};white-space:nowrap">${n.fiber}g</span>
-    <span style="font-size:9px;color:#C0B8C0;margin-top:1px">/ ${t.fiber||25}g</span>
+    <span style="font-size:9px;color:var(--text-secondary);font-weight:500;margin-top:1px">/ ${t.fiber||25}g</span>
   </div>`;
   html+=`</div>`;
   return html;
@@ -2252,7 +2309,7 @@ function renderExtras(dayIdx){
     QUICK_EXTRAS.forEach((p,idx)=>{
       html+=`<button onclick="addQuickExtra(${dayIdx},${idx})" title="${esc(p.label)}" style="font-size:9px;font-weight:700;color:#5AAAC8;border:1px solid #A8D8E8;background:#EAF6FB;padding:2px 7px;border-radius:3px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">${esc(p.name)} <span style="font-weight:400;opacity:0.75">${esc(p.label)}</span></button>`;
     });
-    html+=`<button onclick="addCustomExtra(${dayIdx})" style="font-size:9px;font-weight:700;color:#9A9098;border:1px solid #E0D8D8;background:#F5F0F0;padding:2px 7px;border-radius:3px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">+ Custom</button>`;
+    html+=`<button onclick="addCustomExtra(${dayIdx})" style="font-size:9px;font-weight:600;color:var(--text-secondary);border:1px solid #E0D8D8;background:#F5F0F0;padding:2px 7px;border-radius:3px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">+ Custom</button>`;
     html+=`</div>`;
   }
   html+=`</div>`;
@@ -2501,32 +2558,39 @@ function changeServings(dayIdx,meal,newSv){
   // Clear all slots for this recipe
   for(let d=0;d<S.days;d++){
     if(d===dayIdx)continue;
-    ["lunch","dinner"].forEach(m=>{if(S.plan[d][m]?.id===id){S.plan[d]={...S.plan[d],[m]:null};delete S.servings[d+"-"+m];}});
+    ["lunch","dinner"].forEach(m=>{if(S.plan[d][m]?.id===id){S.plan[d]={...S.plan[d],[m]:null};}});
   }
-  setSv(dayIdx,meal,newSv);
+  // Write servings to anchor slot
+  slot.servings=newSv;
   // Re-fill alternating forward then backward
   let portionsLeft=newSv-1;
   let nextMeal=opp[meal];
   for(let d=dayIdx+1;d<S.days&&portionsLeft>0;d++){
     if(!S.plan[d][nextMeal]&&!Object.values(S.plan[d]).some(s=>s?.id===id)){
-      S.plan[d]={...S.plan[d],[nextMeal]:{id,scale}};setSv(d,nextMeal,newSv);portionsLeft--;nextMeal=opp[nextMeal];
+      S.plan[d]={...S.plan[d],[nextMeal]:{id,scale,servings:newSv}};portionsLeft--;nextMeal=opp[nextMeal];
     }
   }
   nextMeal=opp[meal];
   for(let d=dayIdx-1;d>=0&&portionsLeft>0;d--){
     if(!S.plan[d][nextMeal]&&!Object.values(S.plan[d]).some(s=>s?.id===id)){
-      S.plan[d]={...S.plan[d],[nextMeal]:{id,scale}};setSv(d,nextMeal,newSv);portionsLeft--;nextMeal=opp[nextMeal];
+      S.plan[d]={...S.plan[d],[nextMeal]:{id,scale,servings:newSv}};portionsLeft--;nextMeal=opp[nextMeal];
     }
   }
   persistPlan();render();
 }
-function openGuestScale(id){S.guestScale={id,people:(S.guestServings||{})[id]||""};renderModals();}
+function openGuestScale(id,dayIdx,meal){
+  const slot=S.plan?.[dayIdx]?.[meal];
+  S.guestScale={id,dayIdx:dayIdx??null,meal:meal??null,people:slot?.guests||""};
+  renderModals();
+}
 function saveGuestScale(){
-  const id=S.guestScale.id;
+  const{id,dayIdx,meal}=S.guestScale;
   const n=parseInt(S.guestScale.people)||0;
-  if(!S.guestServings)S.guestServings={};
-  if(n>0)S.guestServings[id]=n;
-  else delete S.guestServings[id];
+  const slot=S.plan?.[dayIdx]?.[meal];
+  if(slot){
+    if(n>0)slot.guests=n;
+    else delete slot.guests;
+  }
   S.guestScale=null;persistPlan();render();
 }
 function closeGuestScale(){S.guestScale=null;renderModals();}
@@ -2539,26 +2603,17 @@ function renderGuestScaleModal(){
   let html=`<div class="modal-overlay center" onclick="if(event.target===this)closeGuestScale()">`;
   html+=`<div class="modal-sheet centered" style="max-width:460px">`;
   html+=`<div style="padding:16px 20px;border-bottom:1px solid #E8E0D8">`;
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:15px;font-weight:700;color:#2E3038">&#128101; Cooking for guests</div><button onclick="closeGuestScale()" style="border:none;background:none;font-size:24px;cursor:pointer;color:#BBB;outline:none">&#215;</button></div>`;
-  html+=`<div style="font-size:13px;color:#9A9098;margin-top:4px">${esc(r.title)}</div></div>`;
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:15px;font-weight:700;color:#2E3038">&#128101; Cooking for guests</div><button onclick="closeGuestScale()" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-tertiary);outline:none">&#215;</button></div>`;
+  html+=`<div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-top:4px">${esc(r.title)}</div></div>`;
   html+=`<div style="padding:20px">`;
   html+=`<div style="font-size:13px;font-weight:600;color:#2E3038;margin-bottom:6px">How many extra guests?</div>`;
-  html+=`<div style="font-size:11px;color:#9A9098;margin-bottom:12px">Your own portions are already counted. Enter additional guests only.</div>`;
+  html+=`<div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:12px">Your own portions are already counted. Enter additional guests only.</div>`;
   html+=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px">`;
   html+=`<input type="number" min="0" max="50" value="${esc(S.guestScale.people)}" placeholder="0" data-focus-id="guest-people" oninput="S.guestScale.people=this.value;renderModals()" class="inp" style="width:100px;font-size:18px;text-align:center;font-weight:700">`;
-  html+=`<span style="font-size:13px;color:#9A9098">extra guests</span></div>`;
-  if(people>0){
-    // Find first slot servings for this recipe — user's selected quantity
-    let firstSlotSv=r.servings||1;
-    outer:for(let i=0;i<S.days;i++){for(const m of["breakfast","lunch","dinner"]){if(S.plan[i]?.[m]?.id===S.guestScale.id){firstSlotSv=getSv(i,m);break outer;}}}
-    const{totalServings,factor}=getTotalServings(S.guestScale.id,firstSlotSv);
-    html+=`<div style="background:#F0EBE6;border-radius:8px;padding:14px;margin-bottom:16px">`;
-    html+=`<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cooking for ${totalServings} servings total</div>`;
-    r.ingredients.forEach(ing=>{html+=`<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #E8E0D8;color:#2E3038">${esc(factor!==1?scaleIng(ing,factor):ing)}</div>`;});
-    html+=`</div>`;
-  }
+  html+=`<span style="font-size:13px;color:var(--text-secondary);font-weight:500">extra guests</span></div>`;
   html+=`<div style="display:flex;gap:8px">`;
-  if((S.guestServings||{})[S.guestScale.id])html+=`<button onclick="S.guestScale.people='0';saveGuestScale()" style="padding:10px 16px;border:1.5px solid #E8E0D8;background:#fff;color:#9A9098;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">Remove guests</button>`;
+  const slotHasGuests=!!(S.plan?.[S.guestScale.dayIdx]?.[S.guestScale.meal]?.guests);
+  if(slotHasGuests)html+=`<button onclick="S.guestScale.people='0';saveGuestScale()" style="padding:10px 16px;border:1.5px solid #E8E0D8;background:#fff;color:var(--text-secondary);border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">Remove guests</button>`;
   html+=`<button onclick="saveGuestScale()" style="flex:1;padding:12px;background:#5AAAC8;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">${people>0?"Save - cook for "+people+" guests":"Save"}</button>`;
   html+=`</div></div></div></div>`;
   return html;
@@ -2568,29 +2623,49 @@ function clearMeal(dayIdx,meal){S.plan[dayIdx]={...S.plan[dayIdx],[meal]:null};p
 // ── PICKER MODAL ──────────────────────────────────────────────────────────────
 function openPicker(dayIdx,mealType){S.pickerModal={dayIdx,mealType,q:"",smartFilter:true,typeFilter:mealType==="breakfast"?"breakfast":"mains",sv:2};renderModals();}
 function closePicker(){S.pickerModal=null;renderModals();}
-function pickMeal(dayIdx,mealType,id,sv){
-  backupPlan();
-  const servings=parseInt(sv)||2;
-  const _pmR=allRecipes().find(x=>x.id===id);
+
+// Pure assignment: sets exactly one slot, no side effects
+function assignRecipeToSlot(dayIdx,meal,recipeId,servings){
+  if(!S.plan[dayIdx])S.plan[dayIdx]={breakfast:null,lunch:null,dinner:null};
+  const r=allRecipes().find(x=>x.id===recipeId);
   const target=(S.settings||DEFAULT_SETTINGS).calories||1700;
-  setSv(dayIdx,mealType,servings);
-  S.plan[dayIdx]={...S.plan[dayIdx],[mealType]:{id,scale:_pmR?calcDynamicScale(S.plan[dayIdx],mealType,_pmR.nutrition.calories,allRecipes(),target):1}};
-  let portionsLeft=servings-1;
+  const scale=r?calcDynamicScale(S.plan[dayIdx],meal,r.nutrition.calories,allRecipes(),target):1;
+  S.plan[dayIdx]={...S.plan[dayIdx],[meal]:{id:recipeId,scale,servings:servings||1}};
+}
+
+// Optional propagation: fills other empty slots with the same recipe
+function propagateRecipe(dayIdx,meal,recipeId,servings){
+  const r=allRecipes().find(x=>x.id===recipeId);
+  const target=(S.settings||DEFAULT_SETTINGS).calories||1700;
   const opp={breakfast:"breakfast",lunch:"dinner",dinner:"lunch"};
-  let nextMeal=opp[mealType];
+  let portionsLeft=(servings||1)-1;
+  let nextMeal=opp[meal];
   for(let d=dayIdx+1;d<S.days&&portionsLeft>0;d++){
     if(!S.plan[d])S.plan[d]={breakfast:null,lunch:null,dinner:null};
-    if(!S.plan[d][nextMeal]&&!Object.values(S.plan[d]).some(s=>s?.id===id)){
-      S.plan[d]={...S.plan[d],[nextMeal]:{id,scale:_pmR?calcDynamicScale(S.plan[d],nextMeal,_pmR.nutrition.calories,allRecipes(),target):1}};setSv(d,nextMeal,servings);portionsLeft--;nextMeal=opp[nextMeal];
+    if(!S.plan[d][nextMeal]&&!Object.values(S.plan[d]).some(s=>s?.id===recipeId)){
+      const scale=r?calcDynamicScale(S.plan[d],nextMeal,r.nutrition.calories,allRecipes(),target):1;
+      S.plan[d]={...S.plan[d],[nextMeal]:{id:recipeId,scale,servings}};
+      portionsLeft--;nextMeal=opp[nextMeal];
     }
   }
-  nextMeal=opp[mealType];
+  nextMeal=opp[meal];
   for(let d=dayIdx-1;d>=0&&portionsLeft>0;d--){
     if(!S.plan[d])S.plan[d]={breakfast:null,lunch:null,dinner:null};
-    if(!S.plan[d][nextMeal]&&!Object.values(S.plan[d]).some(s=>s?.id===id)){
-      S.plan[d]={...S.plan[d],[nextMeal]:{id,scale:_pmR?calcDynamicScale(S.plan[d],nextMeal,_pmR.nutrition.calories,allRecipes(),target):1}};setSv(d,nextMeal,servings);portionsLeft--;nextMeal=opp[nextMeal];
+    if(!S.plan[d][nextMeal]&&!Object.values(S.plan[d]).some(s=>s?.id===recipeId)){
+      const scale=r?calcDynamicScale(S.plan[d],nextMeal,r.nutrition.calories,allRecipes(),target):1;
+      S.plan[d]={...S.plan[d],[nextMeal]:{id:recipeId,scale,servings}};
+      portionsLeft--;nextMeal=opp[nextMeal];
     }
   }
+}
+
+function pickMeal(dayIdx,mealType,id,sv){
+  backupPlan();
+  const servings=parseInt(sv)||1;
+  // Assign to the selected slot only — no hidden mutations
+  assignRecipeToSlot(dayIdx,mealType,id,servings);
+  // Propagate only if user explicitly set multiple servings (portionsLeft > 0)
+  if(servings>1)propagateRecipe(dayIdx,mealType,id,servings);
   S.pickerModal=null;persistPlan();render();
 }
 function renderPickerModal(){
@@ -2647,7 +2722,7 @@ function renderPickerModal(){
       if(n.fiber>=7&&n.carbs<=45)pb.push({icon:"🩸",label:"blood sugar friendly",col:"#7C3AED"});
       if(n.fiber>=10&&!pb.some(x=>x.label==="blood sugar friendly"))pb.push({icon:"🌾",label:"high fibre",col:"#065F46"});
       const shown=pb.filter((b,i,a)=>a.findIndex(x=>x.label===b.label)===i).slice(0,2);
-      if(shown.length===0){html+=`<div style="font-size:10px;color:#BBB;margin-top:2px;font-style:italic">just… food 🤷</div>`;}
+      if(shown.length===0){html+=`<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-style:italic">just… food 🤷</div>`;}
       else{shown.forEach(b=>{html+=`<div style="font-size:10px;color:${b.col};margin-top:3px">${b.icon} ${b.label}</div>`;});}}
     if(antiInflam(r).length>0)html+=`<div style="font-size:10px;color:#065F46;margin-top:3px">🌿 anti-inflammatory</div>`;
     html+=`</div></div>`;
@@ -2681,11 +2756,11 @@ function renderIntake(){
     items.forEach(item=>{
       html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#FAF8F5;border:1px solid #EDE8E2;border-radius:6px;margin-bottom:5px">`;
       html+=`<span style="font-size:12px;color:#2E3038;font-weight:500">🍴 ${esc(item.name)}</span>`;
-      html+=`<button onclick="removeSnack(${item.id})" style="border:none;background:none;color:#C0B0B0;font-size:13px;cursor:pointer;padding:0;line-height:1;outline:none" onmouseover="this.style.color='#DC2626'" onmouseout="this.style.color='#C0B0B0'">×</button>`;
+      html+=`<button onclick="removeSnack(${item.id})" style="border:none;background:none;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:0;line-height:1;outline:none" onmouseover="this.style.color='#DC2626'" onmouseout="this.style.color='var(--text-tertiary)'">×</button>`;
       html+=`</div>`;
     });
   }else{
-    html+=`<div style="font-size:11px;color:#C0B8C0;font-style:italic;padding:4px 0">Nothing logged yet today</div>`;
+    html+=`<div style="font-size:11px;color:var(--text-tertiary);font-style:italic;padding:4px 0">Nothing logged yet today</div>`;
   }
   html+=`</div>`;
   return html;
@@ -2705,7 +2780,7 @@ function renderWizardPicker(){
   let html=`<div class="modal-overlay" onclick="if(event.target===this)closeWizardPicker()">`;
   html+=`<div class="modal-sheet" style="max-height:80vh">`;
   html+=`<div style="padding:18px 20px 12px;border-bottom:1px solid #E8E3DA;flex-shrink:0">`;
-  html+=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div style="font-size:16px;font-weight:700;color:#2E3038">${esc(picker.title)}</div><div style="font-size:13px;color:#999;margin-top:2px">${esc(picker.subtitle)}</div></div><button onclick="closeWizardPicker()" style="border:none;background:none;font-size:26px;cursor:pointer;color:#BBB">×</button></div>`;
+  html+=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div style="font-size:16px;font-weight:700;color:#2E3038">${esc(picker.title)}</div><div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-top:2px">${esc(picker.subtitle)}</div></div><button onclick="closeWizardPicker()" style="border:none;background:none;font-size:26px;cursor:pointer;color:var(--text-tertiary)">×</button></div>`;
   if(picker.type!=="breakfast")html+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button onclick="S.planState.picker.typeFilter='mains';S.planState.picker.q='';renderModals()" style="flex:1;padding:8px 0;border:2px solid ${wzTypeFilter==='mains'?G:'#E0DAD0'};border-radius:10px;background:${wzTypeFilter==='mains'?G:'#FFF'};color:${wzTypeFilter==='mains'?'#FFF':'#666'};font-size:13px;font-weight:700;cursor:pointer">🍽 Main Meals</button><button onclick="S.planState.picker.typeFilter='breakfast';S.planState.picker.q='';renderModals()" style="flex:1;padding:8px 0;border:2px solid ${wzTypeFilter==='breakfast'?G:'#E0DAD0'};border-radius:10px;background:${wzTypeFilter==='breakfast'?G:'#FFF'};color:${wzTypeFilter==='breakfast'?'#FFF':'#666'};font-size:13px;font-weight:700;cursor:pointer">☀️ Breakfast</button></div>`;
   html+=`<div style="position:relative;display:flex;align-items:center"><input value="${esc(picker.q||"")}" data-focus-id="wiz-search" oninput="S.planState.picker.q=this.value;renderModals()" placeholder="Search..." class="inp" style="font-size:14px;padding-right:32px">`;
   if(picker.q)html+=`<button onclick="S.planState.picker.q='';renderModals()" style="position:absolute;right:8px;border:none;background:none;cursor:pointer;font-size:16px;color:#AAA;line-height:1;padding:0">×</button>`;
@@ -2799,29 +2874,38 @@ function renderShopping(){
   const done=Object.values(S.checked).filter(Boolean).length;
   if(total===0)return`<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:14px">🛒</div><div style="font-family:Georgia,serif;font-size:22px;color:#2E3038;margin-bottom:8px">Cart is empty</div><div style="color:#999;font-size:14px">Add meals to your plan first!</div></div>`;
   let html=`<div style="padding:18px">`;
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:17px;font-weight:700;color:#2E3038">Shopping List</div><div style="color:#999;font-size:13px;margin-top:2px">${done}/${total} items checked</div></div>`;
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:17px;font-weight:700;color:#2E3038">Shopping List</div><div style="color:var(--text-secondary);font-size:13px;margin-top:2px">${done}/${total} items checked</div></div>`;
   if(done>0)html+=`<button onclick="S.checked={};render()" style="padding:7px 14px;border:1px solid #E0DAD0;border-radius:20px;background:#FFF;color:#999;font-size:13px;cursor:pointer">Uncheck all</button>`;
   html+=`</div>`;
+  const shadow="box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),0 2px 4px rgba(0,0,0,0.08),0 6px 14px rgba(0,0,0,0.08)";
+  const pillBase=`border-radius:999px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;display:inline-flex;align-items:center;gap:6px;border:none;${shadow};transition:all 0.15s ease;outline:none`;
+  const pillHover="this.style.transform='translateY(-1px)';this.style.boxShadow='inset 0 1px 0 rgba(255,255,255,0.25),0 4px 8px rgba(0,0,0,0.10),0 10px 20px rgba(0,0,0,0.10)'";
+  const pillOut=`this.style.transform='';this.style.boxShadow='inset 0 1px 0 rgba(255,255,255,0.25),0 2px 4px rgba(0,0,0,0.08),0 6px 14px rgba(0,0,0,0.08)'`;
   html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">`;
-  html+=`<button onclick="sendToAnyList()" style="padding:10px 14px;background:#2E7D32;color:#FFF;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer">🛒 AnyList</button>`;
-  html+=`<button onclick="sendToOurGroceries()" style="padding:10px 14px;background:#E65100;color:#FFF;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer">🛒 OurGroceries</button>`;
-  html+=`<button onclick="emailList()" style="padding:10px 14px;background:#1565C0;color:#FFF;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer">📧 Email list</button>`;
-  html+=`<button onclick="exportWeeklyPDF()" style="padding:10px 14px;background:#FFF;color:#555;border:1px solid #E0DAD0;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer">📄 PDF</button>`;
+  html+=`<button onclick="sendToAnyList()" style="${pillBase};background:linear-gradient(to bottom,#67b1cc,#5FA8C5);color:#fff" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1;color:#fff">🛒</span> AnyList</button>`;
+  html+=`<button onclick="sendToOurGroceries()" style="${pillBase};background:linear-gradient(to bottom,#f2c068,#EDB75E);color:rgba(27,27,27,1)" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1">🛒</span> OurGroceries</button>`;
+  html+=`<button onclick="emailList()" style="${pillBase};background:linear-gradient(to bottom,#c0a4de,#B79AD6);color:#fff" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1;color:#fff">✉️</span> Email</button>`;
+  html+=`<button onclick="exportWeeklyPDF()" style="${pillBase};background:linear-gradient(to bottom,#EFECEA,#E8E6E3);color:rgba(80,80,80,1);box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 4px rgba(0,0,0,0.06),0 6px 14px rgba(0,0,0,0.05);border:1px solid rgba(0,0,0,0.08)" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1">📄</span> PDF</button>`;
   if(S.shoppingExportMsg)html+=`<span style="font-size:13px;color:#16A34A;font-weight:600;align-self:center">${esc(S.shoppingExportMsg)}</span>`;
   html+=`</div>`;
   html+=`<div style="height:5px;background:#E8E3DA;border-radius:3px;margin-bottom:18px;overflow:hidden"><div style="height:100%;width:${total>0?(done/total)*100:0}%;background:${G};border-radius:3px;transition:width 0.3s"></div></div>`;
   Object.entries(list).sort().forEach(([cat,items])=>{
     if(!items.length)return;
-    html+=`<div style="margin-bottom:20px"><div style="font-size:14px;font-weight:700;color:#2E3038;margin-bottom:8px">${esc(cat)} <span style="font-size:11px;color:#BBB;font-weight:400">(${items.length})</span></div>`;
-    html+=`<div style="background:#FFF;border-radius:12px;overflow:hidden;border:1px solid #E8E3DA">`;
+    html+=`<div style="margin-bottom:24px">`;
+    html+=`<div style="font-size:13px;font-weight:700;color:rgba(40,40,40,1);letter-spacing:0.2px;margin:16px 0 8px;text-transform:uppercase">${esc(cat)} <span style="font-size:11px;color:var(--text-tertiary);font-weight:400;text-transform:none">(${items.length})</span></div>`;
+    html+=`<div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,0.05);box-shadow:0 1px 2px rgba(0,0,0,0.04),0 6px 16px rgba(0,0,0,0.04)">`;
     items.forEach((item,idx)=>{
       const key=`${cat}|${item.text}|${idx}`;
       const chk=S.checked[key];
-      html+=`<div onclick="S.checked['${key.replace(/'/g,"\'")}']=${!chk};render()" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:${idx<items.length-1?"1px solid #F0EDE8":"none"};cursor:pointer;background:${chk?"#F8F8F6":"#FFF"}">`;
-      html+=`<div style="width:20px;height:20px;border-radius:4px;flex-shrink:0;border:2px solid ${chk?G:"#D0D0C8"};background:${chk?G:"transparent"};display:flex;align-items:center;justify-content:center;color:#FFF;font-size:11px">${chk?"✓":""}</div>`;
-      html+=`<div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:14px;color:${chk?"#BBBBB4":"#2E3038"};font-weight:600;text-decoration:${chk?"line-through":"none"}">${esc(item.text)}</span>${item.combined?`<span style="font-size:10px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;border-radius:8px;padding:1px 6px;font-weight:700">×${item.count} recipes</span>`:""}</div>`;
-      html+=`<div style="font-size:11px;color:#CCCCCA;margin-top:1px">from: ${esc(item.from)}</div></div>`;
+      html+=`<div onclick="S.checked['${key.replace(/'/g,"\'")}']=${!chk};render()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:${idx<items.length-1?"1px solid rgba(0,0,0,0.05)":"none"};cursor:pointer;background:${chk?"rgba(0,0,0,0.015)":"#fff"};transition:background 0.12s" onmouseover="this.style.background='rgba(0,0,0,0.02)'" onmouseout="this.style.background='${chk?"rgba(0,0,0,0.015)":"#fff"}'">`;
+      html+=`<div style="width:20px;height:20px;border-radius:5px;flex-shrink:0;border:2px solid ${chk?G:"#D0D0C8"};background:${chk?G:"transparent"};display:flex;align-items:center;justify-content:center;color:#FFF;font-size:11px">${chk?"✓":""}</div>`;
+      html+=`<div style="flex:1">`;
+      html+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">`;
+      html+=`<span style="font-size:14px;color:${chk?"#BBBBB4":"rgba(27,27,27,1)"};font-weight:600;text-decoration:${chk?"line-through":"none"}">${esc(item.text)}</span>`;
+      if(item.combined)html+=`<span style="font-size:12px;background:rgba(237,183,94,0.15);color:rgba(180,120,20,1);font-weight:600;border-radius:999px;padding:2px 8px">×${item.count} recipes</span>`;
       html+=`</div>`;
+      html+=`<div style="font-size:12px;color:rgba(110,110,110,1);font-weight:500;margin-top:2px">from: ${esc(item.from)}</div>`;
+      html+=`</div></div>`;
     });
     html+=`</div></div>`;
   });
@@ -2840,7 +2924,7 @@ function renderSettings(){
   });
   html+=`</div>`;
   if(tab==="profile"){
-    html+=`<div style="margin-bottom:14px"><div style="font-size:15px;font-weight:700;color:#2E3038;color:#2E3038">Health Profile</div><div style="color:#999;font-size:13px;margin-top:2px">Fill this in once — the app calculates everything for you.</div></div>`;
+    html+=`<div style="margin-bottom:14px"><div style="font-size:15px;font-weight:700;color:#2E3038;color:#2E3038">Health Profile</div><div style="color:var(--text-secondary);font-size:13px;margin-top:2px">Fill this in once — the app calculates everything for you.</div></div>`;
     html+=`<div style="background:#FFF;border-radius:12px;padding:14px 16px;border:1px solid #E8E3DA;margin-bottom:10px"><label class="lbl">Gender</label><div style="display:flex;gap:8px">`;
     ["female","male"].forEach(g=>{html+=`<button onclick="S.settingsState.p.gender='${g}';render()" style="flex:1;padding:11px;border:2px solid ${p.gender===g?G:"#E0DAD0"};border-radius:10px;background:${p.gender===g?G+"15":"#FFF"};color:${p.gender===g?G:"#666"};font-weight:${p.gender===g?700:400};cursor:pointer;font-size:14px">${g==="female"?"👩 Female":"👨 Male"}</button>`;});
     html+=`</div></div>`;
@@ -2875,7 +2959,7 @@ function renderSettings(){
       html+=`</div>`;
     }
   }else{
-    html+=`<div style="margin-bottom:14px"><div style="font-size:15px;font-weight:700;color:#2E3038;color:#2E3038">Nutrition Targets</div><div style="color:#999;font-size:13px;margin-top:2px">Daily targets used for meal planning.</div></div>`;
+    html+=`<div style="margin-bottom:14px"><div style="font-size:15px;font-weight:700;color:#2E3038;color:#2E3038">Nutrition Targets</div><div style="color:var(--text-secondary);font-size:13px;margin-top:2px">Daily targets used for meal planning.</div></div>`;
     html+=`<div style="background:#FFF;border-radius:12px;padding:14px 16px;border:1px solid #E8E3DA;margin-bottom:10px"><label class="lbl">Daily Calories</label>`;
     html+=`<input type="number" class="inp" value="${f.calories}" style="margin-bottom:8px" onchange="S.settingsState.f={...S.settingsState.f,calories:parseInt(this.value)||0};render()"></div>`;
     html+=`<div style="background:#FFF;border-radius:12px;padding:14px 16px;border:1px solid #E8E3DA;margin-bottom:10px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
@@ -2894,21 +2978,21 @@ function renderSettings(){
   // Rollback
   html+=`<div style="padding:14px 16px;border-bottom:1px solid #F0EDE8">`;
   html+=`<div style="font-size:13px;font-weight:700;color:#2E3038;margin-bottom:3px">Restore Previous Version</div>`;
-  html+=`<div style="font-size:12px;color:#9A9098;margin-bottom:10px">Rolls back your plan to the state before the last change. This cannot be undone automatically.</div>`;
+  html+=`<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Rolls back your plan to the state before the last change. This cannot be undone automatically.</div>`;
   if(hasBackup){
     html+=`<button onclick="confirmRollback()" style="padding:9px 18px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">↩ Restore Previous Version</button>`;
   }else{
-    html+=`<button disabled style="padding:9px 18px;background:#F5F5F5;color:#BBB;border:1.5px solid #E8E8E8;border-radius:8px;font-size:12px;font-weight:700;cursor:not-allowed;font-family:'Montserrat',sans-serif">No previous version available</button>`;
+    html+=`<button disabled style="padding:9px 18px;background:#F5F5F5;color:var(--text-tertiary);border:1.5px solid #E8E8E8;border-radius:8px;font-size:12px;font-weight:700;cursor:not-allowed;font-family:'Montserrat',sans-serif">No previous version available</button>`;
   }
   html+=`</div>`;
   // Redo
   html+=`<div style="padding:14px 16px">`;
   html+=`<div style="font-size:13px;font-weight:700;color:#2E3038;margin-bottom:3px">Restore Next Version</div>`;
-  html+=`<div style="font-size:12px;color:#9A9098;margin-bottom:10px">Re-applies the version that was active before you last rolled back.</div>`;
+  html+=`<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Re-applies the version that was active before you last rolled back.</div>`;
   if(hasForward){
     html+=`<button onclick="redoLastChange()" style="padding:9px 18px;background:#EAF6FB;color:#3A7A9C;border:1.5px solid #A0D4E8;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">↪ Restore Next Version</button>`;
   }else{
-    html+=`<button disabled style="padding:9px 18px;background:#F5F5F5;color:#BBB;border:1.5px solid #E8E8E8;border-radius:8px;font-size:12px;font-weight:700;cursor:not-allowed;font-family:'Montserrat',sans-serif">No next version available</button>`;
+    html+=`<button disabled style="padding:9px 18px;background:#F5F5F5;color:var(--text-tertiary);border:1.5px solid #E8E8E8;border-radius:8px;font-size:12px;font-weight:700;cursor:not-allowed;font-family:'Montserrat',sans-serif">No next version available</button>`;
   }
   html+=`</div></div></div>`;
   html+=`</div>`;
@@ -3040,7 +3124,7 @@ function renderAddModal(){
   const isEdit=!!S_editingRecipeId;
   let html=`<div class="modal-overlay center" onclick="if(event.target===this)closeAddModal()">`;
   html+=`<div class="modal-sheet centered" style="max-width:500px">`;
-  html+=`<div style="padding:16px 20px;border-bottom:1px solid #E8E3DA;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><div style="font-family:Georgia,serif;font-size:18px;font-weight:700">${isEdit?"Edit Recipe":"Add New Recipe"}</div><button onclick="closeAddModal()" style="border:none;background:none;font-size:24px;cursor:pointer;color:#BBB">×</button></div>`;
+  html+=`<div style="padding:16px 20px;border-bottom:1px solid #E8E3DA;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><div style="font-family:Georgia,serif;font-size:18px;font-weight:700">${isEdit?"Edit Recipe":"Add New Recipe"}</div><button onclick="closeAddModal()" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-tertiary)">×</button></div>`;
   html+=`<div style="overflow-y:auto;padding:18px;flex:1;display:flex;flex-direction:column;gap:12px">`;
   // Image picker
   const previewSrc=f.image||"";
@@ -3154,7 +3238,7 @@ function renderBackupModal(){
   let html=`<div class="modal-overlay center" onclick="if(event.target===this)closeBackup()">`;
   html+=`<div class="modal-sheet centered" style="max-width:500px">`;
   html+=`<div style="padding:16px 20px;border-bottom:1px solid #E8E3DA;flex-shrink:0">`;
-  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:Georgia,serif;font-size:18px;font-weight:700">Backup & Restore</div><button onclick="closeBackup()" style="border:none;background:none;font-size:24px;cursor:pointer;color:#BBB">×</button></div>`;
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:Georgia,serif;font-size:18px;font-weight:700">Backup & Restore</div><button onclick="closeBackup()" style="border:none;background:none;font-size:24px;cursor:pointer;color:var(--text-tertiary)">×</button></div>`;
   html+=`<div style="display:flex;gap:8px">`;
   ["export","import"].forEach(m=>{html+=`<button onclick="S.backupModal.mode='${m}';renderModals()" style="flex:1;padding:10px;border:2px solid ${mode===m?G:"#E0DAD0"};border-radius:10px;background:${mode===m?G+"15":"#FFF"};color:${mode===m?G:"#666"};font-size:14px;font-weight:${mode===m?700:400};cursor:pointer">${m==="export"?"📤 Backup":"📥 Restore"}</button>`;});
   html+=`</div></div>`;
@@ -3218,8 +3302,8 @@ function exportWeeklyPDF(){
   const MEALS=["breakfast","lunch","dinner"];
   const all=allRecipes();
   const seen={};
-  for(let i=0;i<S.days;i++){MEALS.forEach(m=>{const slot=S.plan[i]?.[m];if(!slot?.id)return;const id=slot.id;if(!seen[id])seen[id]={meal:m,days:[],sv:getSv(i,m)};seen[id].days.push(DAYS[i]);});}
-  const planned=Object.entries(seen).map(([id,info])=>({id,meal:info.meal,days:info.days,sv:info.sv,recipe:all.find(x=>x.id===id)})).filter(x=>x.recipe);
+  for(let i=0;i<S.days;i++){MEALS.forEach(m=>{const slot=S.plan[i]?.[m];if(!slot?.id)return;const id=slot.id;if(!seen[id])seen[id]={meal:m,days:[],dayIdx:i,sv:getSv(i,m)};seen[id].days.push(DAYS[i]);});}
+  const planned=Object.entries(seen).map(([id,info])=>({id,meal:info.meal,days:info.days,dayIdx:info.dayIdx,sv:info.sv,recipe:all.find(x=>x.id===id)})).filter(x=>x.recipe);
   if(!planned.length){alert("No meals planned yet!");return;}
   const imgBase="https://helpful-taffy-5bbe52.netlify.app/";
   const mealLabel={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner"};
@@ -3258,9 +3342,15 @@ function exportWeeklyPDF(){
     const r=item.recipe;
     const _rImg=recipeImg(r);
     const imgSrc=_rImg||null;
-    // PDF: selected servings only — no guest state, no plan frequency
-    const sv=item.sv||r.servings||1;
-    const pdfFactor=sv/(r.servings||1);
+    // ── SINGLE MODEL: same helper as renderRecipeModal ────────────────────────
+    const model=getSlotServingModel(item.dayIdx,item.meal);
+    const baseServings=model?model.baseServings:1;
+    const guests=model?model.guests:0;
+    const totalServings=model?model.totalServings:1;
+    const pdfFactor=model?model.ingredientFactor:1;
+    const nutritionScale=model?model.nutritionScale:1;
+    const servingText=model?model.servingText:"1 serving";
+    // ──────────────────────────────────────────────────────────────────────────
     const mc=mealColor[item.meal]||"#5AAAC8";
     const ml=mealLabel[item.meal]||item.meal;
     h+="<div class='page'>";
@@ -3269,11 +3359,11 @@ function exportWeeklyPDF(){
     h+="<span class='r-tag' style='color:"+mc+";border-color:"+mc+"'>"+ml+"</span>";
     h+="</div><div>";
     h+="<div class='r-title'>"+r.title+"</div>";
-    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+sv+" serving"+(sv!==1?"s":"")+"</div>";
+    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+servingText+"</div>";
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
-    h+="<div class='ing-title'>"+(pdfFactor!==1?"Ingredients for "+sv+" servings":"Ingredients")+"</div>";
+    h+="<div class='ing-title'>"+(pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients")+"</div>";
     r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";});
     h+="</div><div><div class='meth-title'>Method</div>";
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+step+"</div></div>";});
@@ -3281,11 +3371,11 @@ function exportWeeklyPDF(){
     if(r.nutrition){
       h+="<div style='text-align:center;font-size:12px;color:#7C8A97;margin-top:20px;margin-bottom:8px'>Nutrition values shown per serving</div>";
       h+="<div class='nutr'>";
-      h+="<div class='nc'><div class='nv' style='color:#F0A500'>"+r.nutrition.calories+"</div><div class='nl'>Cal</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+r.nutrition.protein+"g</div><div class='nl'>Protein</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#2E3038'>"+r.nutrition.carbs+"g</div><div class='nl'>Carbs</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+r.nutrition.fat+"g</div><div class='nl'>Fat</div></div>";
-      h+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+(r.nutrition.fiber||0)+"g</div><div class='nl'>Fibre</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#F0A500'>"+Math.round(r.nutrition.calories*nutritionScale)+"</div><div class='nl'>Cal</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+Math.round(r.nutrition.protein*nutritionScale)+"g</div><div class='nl'>Protein</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#2E3038'>"+Math.round(r.nutrition.carbs*nutritionScale)+"g</div><div class='nl'>Carbs</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+Math.round(r.nutrition.fat*nutritionScale)+"g</div><div class='nl'>Fat</div></div>";
+      h+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+Math.round((r.nutrition.fiber||0)*nutritionScale)+"g</div><div class='nl'>Fibre</div></div>";
       h+="</div>";
     }
     h+="<div class='footer'>DIMPLE'S KITCHEN &nbsp;&middot;&nbsp; "+new Date().toLocaleDateString("en-AU",{year:"numeric",month:"long",day:"numeric"})+"</div>";
