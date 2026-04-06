@@ -1362,35 +1362,34 @@ function combineIngredients(items){
 }
 
 // ── SINGLE SOURCE OF TRUTH: TOTAL SERVINGS ───────────────────────────────────
-// totalServings = (planCount × baseServings) + guestCount
-// factor        = totalServings / baseServings
-// Used by: recipe modal ingredients, guest modal preview, shopping list
-function getTotalServings(recipeId){
+// totalServings = selectedServings + guestCount
+// selectedServings: what the user chose in the planner for this slot
+// planCount is for scheduling only — NOT used in cooking/scaling math
+function getTotalServings(recipeId, selectedServings){
   const r=allRecipes().find(x=>x.id===recipeId);
-  if(!r)return{totalServings:1,factor:1,baseServings:1,planCount:0,guestCount:0};
+  if(!r)return{totalServings:1,factor:1,baseServings:1,selectedServings:1,guestCount:0};
   const baseServings=r.servings||1;
-  const planCount=countRecipeInPlan(recipeId)||0;
+  const sv=selectedServings!=null?selectedServings:baseServings;
   const guestCount=(S.guestServings||{})[recipeId]||0;
-  const totalServings=(planCount*baseServings)+guestCount;
-  const effective=Math.max(totalServings,baseServings);
-  const factor=effective/baseServings;
-  return{totalServings:effective,factor,baseServings,planCount,guestCount};
+  const totalServings=sv+guestCount;
+  const factor=totalServings/baseServings;
+  return{totalServings,factor,baseServings,selectedServings:sv,guestCount};
 }
 
 function buildShoppingList(plan,recipes,days){
-  // Collect unique recipe IDs from plan
-  const seen=new Set();
+  // Collect unique recipe IDs and first-slot selected servings
+  const seenSv={};
   for(let i=0;i<days;i++){
     ["breakfast","lunch","dinner"].forEach(meal=>{
       const id=plan[i]?.[meal]?.id;
-      if(id)seen.add(id);
+      if(id&&seenSv[id]==null)seenSv[id]=getSv(i,meal);
     });
   }
   const allItems=[];
-  seen.forEach(id=>{
+  Object.entries(seenSv).forEach(([id,sv])=>{
     const recipe=recipes.find(r=>r.id===id);
     if(!recipe)return;
-    const{factor}=getTotalServings(id);
+    const{factor}=getTotalServings(id,sv);
     recipe.ingredients.forEach(ing=>{
       const scaledIng=factor!==1?scaleIng(ing,factor):ing;
       allItems.push({ing:scaledIng,from:recipe.title,originalIng:ing});
@@ -1746,9 +1745,13 @@ function renderLibrary(){
 }
 function shareRecipe(id){
   const r=allRecipes().find(x=>x.id===id);if(!r)return;
-  const imgBase="https://helpful-taffy-5bbe52.netlify.app/";
-  const imgSrc=IMG_MAP[r.id]?imgBase+IMG_MAP[r.id]:null;
+  // Use modal sv if called from open modal, else base servings
+  const sv=(S.recipeModal?.id===id?S.recipeModal.sv:null)||r.servings||1;
+  const guestCount=(S.guestServings||{})[id]||0;
+  const{totalServings,factor}=getTotalServings(id,sv);
+  const imgSrc=recipeImg(r)?new URL(recipeImg(r),window.location.href).href:null;
   const mc=r.type==="breakfast"?"#F0A500":"#C8A0D8";
+  const servingLabel=totalServings+" serving"+(totalServings!==1?"s":"")+(guestCount>0?" (incl. "+guestCount+" guests)":"");
   let h2="<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
   h2+="<title>"+r.title+"</title>";
   h2+="<link href='https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap' rel='stylesheet'>";
@@ -1773,22 +1776,22 @@ function shareRecipe(id){
   h2+="<div class='r-top'><div style='display:flex;flex-direction:column;gap:7px'>";
   h2+="<span class='r-tag' style='color:"+mc+";border-color:"+mc+"'>"+(r.type==="breakfast"?"Breakfast":"Dinner / Lunch")+"</span>";
   h2+="</div><div><div class='r-title'>"+r.title+"</div>";
-  h2+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+r.servings+" serving"+(r.servings>1?"s":"")+"</div></div></div>";
+  h2+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+servingLabel+"</div></div></div>";
   h2+="<div class='r-body'><div>";
-  if(imgSrc)h2+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"'>";
+  if(imgSrc)h2+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
   else h2+="<div class='r-img-ph'>"+r.emoji+"</div>";
-  h2+="<div class='sec'>Ingredients</div>";
-  r.ingredients.forEach(ing=>{h2+="<div class='ing'><div class='dot'></div>"+ing+"</div>";});
+  h2+="<div class='sec'>Ingredients"+(factor>1?" (×"+factor+")":"")+"</div>";
+  r.ingredients.forEach(ing=>{h2+="<div class='ing'><div class='dot'></div>"+(factor!==1?scaleIng(ing,factor):ing)+"</div>";});
   h2+="</div><div><div class='sec'>Method</div>";
   r.steps.forEach((s,i)=>{h2+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+s+"</div></div>";});
   h2+="</div></div>";
   if(r.nutrition){
     h2+="<div class='nutr'>";
-    h2+="<div class='nc'><div class='nv' style='color:#F0A500'>"+r.nutrition.calories+"</div><div class='nl'>Cal</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+r.nutrition.protein+"g</div><div class='nl'>Protein</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#2E3038'>"+r.nutrition.carbs+"g</div><div class='nl'>Carbs</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+r.nutrition.fat+"g</div><div class='nl'>Fat</div></div>";
-    h2+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+(r.nutrition.fiber||0)+"g</div><div class='nl'>Fibre</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#F0A500'>"+Math.round(r.nutrition.calories*factor)+"</div><div class='nl'>Cal</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+Math.round(r.nutrition.protein*factor)+"g</div><div class='nl'>Protein</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#2E3038'>"+Math.round(r.nutrition.carbs*factor)+"g</div><div class='nl'>Carbs</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#F0C4BC'>"+Math.round(r.nutrition.fat*factor)+"g</div><div class='nl'>Fat</div></div>";
+    h2+="<div class='nc'><div class='nv' style='color:#C8A0D8'>"+Math.round((r.nutrition.fiber||0)*factor)+"g</div><div class='nl'>Fibre</div></div>";
     h2+="</div>";
   }
   h2+="<div class='footer'>DIMPLE'S KITCHEN - Shared from my weekly meal plan</div>";
@@ -1838,20 +1841,19 @@ function openRecipe(id,scale,dayIdx,meal){
   const defaultSv=planCount>0?planCount+guestCount:(r.servings||1);
   // scale: passed when opened from plan (slot.scale), defaults to 1 when opened from library
   // dayIdx/meal: passed from plan card, null when opened from library
-  S.recipeModal={id,chkI:{},chkS:{},sv:defaultSv,scale:scale||1,dayIdx:dayIdx??null,meal:meal??null};renderModals();
+  S.recipeModal={id,chkI:{},chkS:{},sv:r.servings||1,scale:scale||1,dayIdx:dayIdx??null,meal:meal??null};renderModals();
 }
 function closeRecipe(){S.recipeModal=null;renderModals();}
 function renderRecipeModal(){
   if(!S.recipeModal)return"";
   const r=allRecipes().find(x=>x.id===S.recipeModal.id);if(!r)return"";
   const{chkI,chkS,sv}=S.recipeModal;
-  // Single source of truth for all ingredient scaling
-  const isBreakfast=r.type==="breakfast";
-  const{totalServings,factor:mealFactor,guestCount}=getTotalServings(r.id);
-  const servings=sv||1;
-  const factor=isBreakfast?servings:mealFactor;
-  const displayServings=isBreakfast?servings:totalServings;
   const fromPlan=S.recipeModal.dayIdx!==null;
+  // Library: scale by modal sv. Plan: scale by slot-selected servings + guests
+  const selectedSv=fromPlan?getSv(S.recipeModal.dayIdx,S.recipeModal.meal):sv;
+  const{totalServings,factor}=getTotalServings(r.id,selectedSv);
+  const displayServings=totalServings;
+  const guestCount=(S.guestServings||{})[r.id]||0;
   const ai=antiInflam(r);
   const modalImg=recipeImg(r);
   const isFavModal=(S.favorites||new Set()).has(r.id);
@@ -1872,9 +1874,9 @@ function renderRecipeModal(){
   html+=`<button onclick="closeRecipe()" style="border:none;background:none;font-size:26px;cursor:pointer;color:#BBB;line-height:1;padding:0">×</button>`;
   html+=`</div></div>`;
   if(modalImg)html+=`<div style="margin:10px -20px 0;overflow:hidden;height:190px"><img src="${modalImg}" alt="${esc(r.title)}" style="width:100%;height:190px;object-fit:cover;display:block"></div>`;
-  if(isBreakfast){
+  if(!fromPlan){
     html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#FFF;border-radius:10px;padding:8px 12px;border:1px solid #E8E3DA">`;
-    const cookingNote=guestCount>0?`<span style="font-size:10px;color:#C8A0D8;font-weight:600;margin-left:6px">· +${guestCount} guests saved</span>`:"";
+    const cookingNote=guestCount>0?`<span style="font-size:10px;color:#C8A0D8;font-weight:600;margin-left:6px">· +${guestCount} guests</span>`:"";
     html+=`<span style="font-size:12px;color:#555;font-weight:600">Servings:</span>${cookingNote}`;
     [1,2,4,6,8].forEach(s=>{html+=`<button onclick="S.recipeModal.sv=${s};renderModals()" style="width:30px;height:30px;border-radius:50%;border:1.5px solid ${sv===s?G:"#DDD"};background:${sv===s?G:"#FFF"};color:${sv===s?"#FFF":"#555"};font-size:12px;font-weight:700;cursor:pointer">${s}</button>`;});
     html+=`</div>`;
@@ -2526,7 +2528,10 @@ function renderGuestScaleModal(){
   html+=`<input type="number" min="0" max="50" value="${esc(S.guestScale.people)}" placeholder="0" data-focus-id="guest-people" oninput="S.guestScale.people=this.value;renderModals()" class="inp" style="width:100px;font-size:18px;text-align:center;font-weight:700">`;
   html+=`<span style="font-size:13px;color:#9A9098">extra guests</span></div>`;
   if(people>0){
-    const{totalServings,factor}=getTotalServings(S.guestScale.id);
+    // Find first slot servings for this recipe — user's selected quantity
+    let firstSlotSv=r.servings||1;
+    outer:for(let i=0;i<S.days;i++){for(const m of["breakfast","lunch","dinner"]){if(S.plan[i]?.[m]?.id===S.guestScale.id){firstSlotSv=getSv(i,m);break outer;}}}
+    const{totalServings,factor}=getTotalServings(S.guestScale.id,firstSlotSv);
     html+=`<div style="background:#F0EBE6;border-radius:8px;padding:14px;margin-bottom:16px">`;
     html+=`<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cooking for ${totalServings} servings total</div>`;
     r.ingredients.forEach(ing=>{html+=`<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #E8E0D8;color:#2E3038">${esc(factor!==1?scaleIng(ing,factor):ing)}</div>`;});
@@ -3193,8 +3198,8 @@ function exportWeeklyPDF(){
   const MEALS=["breakfast","lunch","dinner"];
   const all=allRecipes();
   const seen={};
-  for(let i=0;i<S.days;i++){MEALS.forEach(m=>{const slot=S.plan[i]?.[m];if(!slot?.id)return;const id=slot.id;if(!seen[id])seen[id]={meal:m,days:[]};seen[id].days.push(DAYS[i]);});}
-  const planned=Object.entries(seen).map(([id,info])=>({id,meal:info.meal,days:info.days,recipe:all.find(x=>x.id===id)})).filter(x=>x.recipe);
+  for(let i=0;i<S.days;i++){MEALS.forEach(m=>{const slot=S.plan[i]?.[m];if(!slot?.id)return;const id=slot.id;if(!seen[id])seen[id]={meal:m,days:[],sv:getSv(i,m)};seen[id].days.push(DAYS[i]);});}
+  const planned=Object.entries(seen).map(([id,info])=>({id,meal:info.meal,days:info.days,sv:info.sv,recipe:all.find(x=>x.id===id)})).filter(x=>x.recipe);
   if(!planned.length){alert("No meals planned yet!");return;}
   const imgBase="https://helpful-taffy-5bbe52.netlify.app/";
   const mealLabel={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner"};
@@ -3232,24 +3237,26 @@ function exportWeeklyPDF(){
   planned.forEach(item=>{
     const r=item.recipe;
     const imgSrc=new URL(recipeImg(r),window.location.href).href;
-    const guestCount=S.guestServings?S.guestServings[r.id]||0:0;
-    // Same factor logic as modal: breakfast=fresh, lunch/dinner=batch
-    const pdfPlanCount=item.days.length||1;
-    const pdfFactor=(r.type==="breakfast")?1:pdfPlanCount;
+    // Use the single source of truth — same formula as modal and shopping list
+    const{totalServings,factor:pdfFactor,baseServings,guestCount}=getTotalServings(r.id,item.sv);
     const mc=mealColor[item.meal]||"#5AAAC8";
     const ml=mealLabel[item.meal]||item.meal;
+    // Header serving label
+    const servingLabel=guestCount>0
+      ?totalServings+" servings ("+item.sv+" selected + "+guestCount+" guests)"
+      :totalServings+" serving"+(totalServings!==1?"s":"");
     h+="<div class='page'>";
     h+="<div class='r-top'><div class='r-tags'>";
     h+="<span class='r-tag' style='color:#2E3038;border-color:#2E3038'>"+item.days.join(" - ")+"</span>";
     h+="<span class='r-tag' style='color:"+mc+";border-color:"+mc+"'>"+ml+"</span>";
     h+="</div><div>";
     h+="<div class='r-title'>"+r.title+"</div>";
-    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+r.servings+" serving"+(r.servings>1?"s":"")+(guestCount>0?" &nbsp;&middot;&nbsp; <span style='color:#C8A0D8;font-weight:700'>+"+guestCount+" guests</span>":"")+"</div>";
+    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+servingLabel+"</div>";
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
-    h+="<div class='ing-title'>Ingredients"+(pdfFactor>1?" (×"+pdfFactor+")":"")+"</div>";
-    r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";});
+    h+="<div class='ing-title'>Ingredients"+(pdfFactor>1?" (cook once for "+totalServings+" servings)":"")+"</div>";
+    r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";})
     h+="</div><div><div class='meth-title'>Method</div>";
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+step+"</div></div>";});
     h+="</div></div>";
