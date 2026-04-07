@@ -1377,11 +1377,12 @@ function getSlotServingModel(dayIdx,meal){
   if(!slot)return null;
   const r=allRecipes().find(x=>x.id===slot.id);
   const recipeBaseServings=(r&&r.servings)||1;
-  // selectedServings = what the user chose; falls back to getSv for old plans
-  const selectedServings=slot.servings||getSv(dayIdx,meal)||recipeBaseServings;
+  const isBreakfast=meal==="breakfast";
+  // Breakfast: default to 1 unless user explicitly set slot.servings
+  // Lunch/dinner: fall back to getSv (backward compat) then recipe base
+  const selectedServings=slot.servings||(isBreakfast?1:getSv(dayIdx,meal)||recipeBaseServings);
   const guests=slot.guests||0;
   const totalServings=selectedServings+guests;
-  // factor drives ingredient scaling: how much MORE than base recipe yield we're cooking
   const ingredientFactor=totalServings/recipeBaseServings;
   const nutritionScale=slot.scale||1;
   const servingText=guests>0
@@ -3333,7 +3334,7 @@ function exportWeeklyPDF(){
   h+=".step{display:flex;gap:12px;margin-bottom:12px}";
   h+=".snum{width:24px;height:24px;min-width:24px;border-radius:50%;background:#5AAAC8;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:2px;flex-shrink:0}";
   h+=".stxt{font-size:13px;color:#2E3038;line-height:1.7}";
-  h+=".nutr{display:flex;border:1.5px solid #E8E0D8;border-radius:4px;overflow:hidden;margin-top:24px}";
+  h+=".nutr{display:flex;border:1.5px solid #E8E0D8;border-radius:4px;overflow:hidden;margin-top:0}";
   h+=".nc{flex:1;text-align:center;padding:10px 6px;border-right:1px solid #E8E0D8}.nc:last-child{border-right:none}";
   h+=".nv{font-size:20px;font-weight:800}.nl{font-size:9px;color:#9A9098;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-top:3px}";
   h+=".footer{text-align:center;color:#C8BFB8;font-size:10px;margin-top:20px;padding-top:14px;border-top:1px solid #F0EBE6;font-weight:500;letter-spacing:0.5px}";
@@ -3359,11 +3360,14 @@ function exportWeeklyPDF(){
     h+="<span class='r-tag' style='color:"+mc+";border-color:"+mc+"'>"+ml+"</span>";
     h+="</div><div>";
     h+="<div class='r-title'>"+r.title+"</div>";
-    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; Serves: "+selectedServings+(guests>0?" + "+guests+" guests":"")+"</div>";
+    const displayTime=item.meal==="breakfast"&&r.time>60?"5":r.time;
+    h+="<div style='text-align:right'>";
+    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; Serves: "+selectedServings+(guests>0?" + "+guests+" guests":"")+"</div>";
     if(item.days.length>0){
       h+="<div class='r-meta' style='margin-top:4px'>Planned: "+item.days.join(", ")+"</div>";
-      if(item.days.length>1)h+="<div style='font-size:10px;color:#9A9098;font-weight:500;margin-top:3px'>Cook once → used for "+item.days.length+" meals this week.</div>";
+      if(item.days.length>1&&item.meal!=="breakfast")h+="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>Cook once → used for "+item.days.length+" meals this week.</div>";
     }
+    h+="</div>";
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
@@ -3373,7 +3377,7 @@ function exportWeeklyPDF(){
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+step+"</div></div>";});
     h+="</div></div>";
     if(r.nutrition){
-      h+="<div style='text-align:center;font-size:12px;color:#7C8A97;margin-top:20px;margin-bottom:8px'>Nutrition values shown per serving</div>";
+      h+="<div style='text-align:left;font-size:11px;color:#9A9098;font-weight:400;margin-top:8px;margin-bottom:4px'>Nutrition values shown per serving</div>";
       h+="<div class='nutr'>";
       h+="<div class='nc'><div class='nv' style='color:#F0A500'>"+Math.round(r.nutrition.calories*nutritionScale)+"</div><div class='nl'>Cal</div></div>";
       h+="<div class='nc'><div class='nv' style='color:#5AAAC8'>"+Math.round(r.nutrition.protein*nutritionScale)+"g</div><div class='nl'>Protein</div></div>";
