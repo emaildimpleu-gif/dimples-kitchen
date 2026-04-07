@@ -1369,23 +1369,25 @@ function combineIngredients(items){
 }
 
 // ── SINGLE SOURCE OF TRUTH: TOTAL SERVINGS ───────────────────────────────────
-// totalServings = selectedServings + guestCount
-// selectedServings: what the user chose in the planner for this slot
-// planCount is for scheduling only — NOT used in cooking/scaling math
+// selectedServings: what user chose to cook (slot.servings)
+// recipeBaseServings: the recipe's own yield (r.servings) — denominator for scaling
+// factor = (selectedServings + guests) / recipeBaseServings
 function getSlotServingModel(dayIdx,meal){
   const slot=S.plan?.[dayIdx]?.[meal];
   if(!slot)return null;
-  // slot.servings is the new source of truth; fall back to getSv for plans
-  // created before slot.servings was introduced (backward compat)
-  const baseServings=slot.servings||getSv(dayIdx,meal)||1;
+  const r=allRecipes().find(x=>x.id===slot.id);
+  const recipeBaseServings=(r&&r.servings)||1;
+  // selectedServings = what the user chose; falls back to getSv for old plans
+  const selectedServings=slot.servings||getSv(dayIdx,meal)||recipeBaseServings;
   const guests=slot.guests||0;
-  const totalServings=baseServings+guests;
-  const ingredientFactor=totalServings/baseServings;
+  const totalServings=selectedServings+guests;
+  // factor drives ingredient scaling: how much MORE than base recipe yield we're cooking
+  const ingredientFactor=totalServings/recipeBaseServings;
   const nutritionScale=slot.scale||1;
   const servingText=guests>0
-    ?`${baseServings} + ${guests} guests`
-    :`${baseServings} serving${baseServings!==1?"s":""}`;
-  return{baseServings,guests,totalServings,ingredientFactor,nutritionScale,servingText};
+    ?`${selectedServings} + ${guests} guests`
+    :`${selectedServings} serving${selectedServings!==1?"s":""}`;
+  return{recipeBaseServings,selectedServings,guests,totalServings,ingredientFactor,nutritionScale,servingText};
 }
 function getTotalServings(recipeId, selectedServings){
   const r=allRecipes().find(x=>x.id===recipeId);
@@ -1900,22 +1902,21 @@ function renderRecipeModal(){
   if(isPlan){
     const model=getSlotServingModel(dayIdx,meal);
     if(model){
-      myServings=model.baseServings;
+      myServings=model.selectedServings;
       totalServings=model.totalServings;
       factor=model.ingredientFactor;
       nutritionScale=model.nutritionScale;
       servingText=model.servingText;
     }else{
-      // slot not found — safe defaults
       myServings=1;totalServings=1;factor=1;nutritionScale=1;
       servingText="1 serving";
     }
   }else{
-    // Library: modal-local sv only, no slot
-    const baseServings=r.servings||1;
-    myServings=sv||baseServings;
+    // Library: sv is the user's choice; r.servings is the recipe base yield
+    const recipeBase=r.servings||1;
+    myServings=sv||recipeBase;
     totalServings=myServings;
-    factor=myServings/baseServings;
+    factor=myServings/recipeBase;
     nutritionScale=factor;
     servingText=`${myServings} serving${myServings!==1?"s":""}`;
   }
@@ -1941,8 +1942,8 @@ function renderRecipeModal(){
   html+=`<button onclick="closeRecipe()" style="border:none;background:none;font-size:26px;cursor:pointer;color:var(--text-tertiary);line-height:1;padding:0">×</button>`;
   html+=`</div></div>`;
   if(modalImg)html+=`<div style="margin:10px -20px 0;overflow:hidden;height:190px"><img src="${modalImg}" alt="${esc(r.title)}" style="width:100%;height:190px;object-fit:cover;display:block"></div>`;
-  // Show serving selector: always in library; in plan only for breakfast
-  const showSelector=!fromPlan||(fromPlan&&isBreakfast);
+  // Show serving selector: always in library; always in plan (all meals)
+  const showSelector=true;
   if(showSelector){
     const activeSv=myServings;
     html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#FFF;border-radius:10px;padding:8px 12px;border:1px solid #E8E3DA">`;
@@ -3344,7 +3345,7 @@ function exportWeeklyPDF(){
     const imgSrc=_rImg||null;
     // ── SINGLE MODEL: same helper as renderRecipeModal ────────────────────────
     const model=getSlotServingModel(item.dayIdx,item.meal);
-    const baseServings=model?model.baseServings:1;
+    const selectedServings=model?model.selectedServings:1;
     const guests=model?model.guests:0;
     const totalServings=model?model.totalServings:1;
     const pdfFactor=model?model.ingredientFactor:1;
@@ -3355,11 +3356,14 @@ function exportWeeklyPDF(){
     const ml=mealLabel[item.meal]||item.meal;
     h+="<div class='page'>";
     h+="<div class='r-top'><div class='r-tags'>";
-    h+="<span class='r-tag' style='color:#2E3038;border-color:#2E3038'>"+item.days.join(" - ")+"</span>";
     h+="<span class='r-tag' style='color:"+mc+";border-color:"+mc+"'>"+ml+"</span>";
     h+="</div><div>";
     h+="<div class='r-title'>"+r.title+"</div>";
-    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; "+servingText+"</div>";
+    h+="<div class='r-meta'>"+r.time+" min &nbsp;&middot;&nbsp; Serves: "+selectedServings+(guests>0?" + "+guests+" guests":"")+"</div>";
+    if(item.days.length>0){
+      h+="<div class='r-meta' style='margin-top:4px'>Planned: "+item.days.join(", ")+"</div>";
+      if(item.days.length>1)h+="<div style='font-size:10px;color:#9A9098;font-weight:500;margin-top:3px'>Cook once → used for "+item.days.length+" meals this week.</div>";
+    }
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
