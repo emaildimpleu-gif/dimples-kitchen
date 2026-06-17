@@ -2667,7 +2667,7 @@ function renderGuestScaleModal(){
 function clearMeal(dayIdx,meal){S.plan[dayIdx]={...S.plan[dayIdx],[meal]:null};persistPlan();render();}
 
 // ── PICKER MODAL ──────────────────────────────────────────────────────────────
-function openPicker(dayIdx,mealType){S.pickerModal={dayIdx,mealType,q:"",smartFilter:true,typeFilter:mealType==="breakfast"?"breakfast":"mains",sv:2};renderModals();}
+function openPicker(dayIdx,mealType){S.pickerModal={dayIdx,mealType,q:"",smartFilter:true,typeFilter:mealType==="breakfast"?"breakfast":"mains",sv:2,tagFilter:null};renderModals();}
 function closePicker(){S.pickerModal=null;renderModals();}
 
 // Pure assignment: sets exactly one slot, no side effects
@@ -2724,7 +2724,12 @@ function renderPickerModal(){
   const settings=S.settings||{calories:1700,protein:110,carbs:175,fat:63};
   const rem={calories:settings.calories-(dn.calories||0),protein:settings.protein-(dn.protein||0),carbs:settings.carbs-(dn.carbs||0),fat:settings.fat-(dn.fat||0)};
   function score(r){const calOver=r.nutrition.calories-rem.calories;return{calOver,fits:calOver<=rem.calories*0.12,great:calOver<=0&&r.nutrition.protein>=Math.min(rem.protein*0.25,20),pct:rem.calories>0?Math.round((r.nutrition.calories/rem.calories)*100):100};}
-  const filtered=pool.filter(r=>{if(!q&&smartFilter)return score(r).fits;return!q||r.title.toLowerCase().includes(q.toLowerCase());});
+  const pmTagFilter=S.pickerModal.tagFilter||null;
+  const filtered=pool.filter(r=>{
+    if(pmTagFilter&&!(r.tags||[]).includes(pmTagFilter))return false;
+    if(!q&&smartFilter&&!pmTagFilter)return score(r).fits;
+    return!q||r.title.toLowerCase().includes(q.toLowerCase());
+  });
   const sorted=[...filtered].sort((a,b)=>{const sa=score(a),sb=score(b);if(sa.great&&!sb.great)return-1;if(!sa.great&&sb.great)return 1;return Math.abs(sa.calOver)-Math.abs(sb.calOver);});
   const hiddenCount=pool.filter(r=>!score(r).fits&&!q).length;
   const labels={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner"};
@@ -2746,7 +2751,19 @@ function renderPickerModal(){
   html+=`<div style="position:relative;display:flex;align-items:center"><input value="${esc(q)}" data-focus-id="picker-search" oninput="S.pickerModal.q=this.value;renderModals()" placeholder="Search all recipes..." class="inp" style="font-size:13px;padding-right:32px">`;
   if(q)html+=`<button onclick="S.pickerModal.q='';renderModals()" style="position:absolute;right:8px;border:none;background:none;cursor:pointer;font-size:16px;color:#AAA;line-height:1;padding:0">×</button>`;
   html+=`</div>`;
-  if(smartFilter&&!q)html+=`<div style="font-size:11px;color:#AAA;margin-top:5px">${sorted.length} recipes fit your budget · ${hiddenCount} hidden — toggle Smart OFF to see all</div>`;
+  const pmAllTags=[...new Set(pool.flatMap(r=>r.tags||[]))].sort();
+  if(pmAllTags.length){
+    html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">`;
+    if(pmTagFilter)html+=`<button onclick="S.pickerModal.tagFilter=null;renderModals()" style="padding:4px 10px;border:none;border-radius:14px;background:#E8E0DC;color:#6A6470;font-size:11px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">✕ Clear</button>`;
+    pmAllTags.forEach(tag=>{
+      const pmIsOn=pmTagFilter===tag;
+      const pmBg=pmIsOn?'#7E22CE':'#F3E8FF';const pmCol=pmIsOn?'#FFF':'#7E22CE';
+      const pmAction=pmIsOn?'null':"'"+tag+"'";
+      html+=`<button onclick="S.pickerModal.tagFilter=${pmAction};renderModals()" style="padding:4px 10px;border:none;border-radius:14px;background:${pmBg};color:${pmCol};font-size:11px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">#${tag}</button>`;
+    });
+    html+=`</div>`;
+  }
+  if(smartFilter&&!q&&!pmTagFilter)html+=`<div style="font-size:11px;color:#AAA;margin-top:5px">${sorted.length} recipes fit your budget · ${hiddenCount} hidden — toggle Smart OFF to see all</div>`;
   html+=`</div><div style="overflow-y:auto;padding:14px;flex:1">`;
   if(q&&filtered.length===0)html+=`<div style="text-align:center;padding:36px"><div style="font-size:36px;margin-bottom:10px">🔍</div><div style="font-size:14px;color:#888">No recipes found for "${esc(q)}"</div></div>`;
   else if(!q&&filtered.length===0&&smartFilter)html+=`<div style="text-align:center;padding:36px"><div style="font-size:36px;margin-bottom:10px">😕</div><div style="font-size:14px;color:#888;margin-bottom:10px">No recipes fit your remaining budget</div><button onclick="S.pickerModal.smartFilter=false;renderModals()" style="padding:8px 18px;background:${G};color:#FFF;border:none;border-radius:20px;font-size:13px;cursor:pointer;font-weight:700">Show all recipes</button></div>`;
