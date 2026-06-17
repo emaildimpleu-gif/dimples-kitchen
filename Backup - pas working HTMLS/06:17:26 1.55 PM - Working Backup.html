@@ -2813,19 +2813,14 @@ function renderIntake(){
 }
 
 // ── WIZARD PICKER MODAL ───────────────────────────────────────────────────────
-function openWizardPicker(type,title,subtitle,maxSelect){S.planState.picker={type,title,subtitle,maxSelect,q:"",typeFilter:type==="breakfast"?"breakfast":"mains",tagFilter:null};renderModals();}
+function openWizardPicker(type,title,subtitle,maxSelect){S.planState.picker={type,title,subtitle,maxSelect,q:"",typeFilter:type==="breakfast"?"breakfast":"mains"};renderModals();}
 function closeWizardPicker(){S.planState.picker=null;renderModals();}
 function renderWizardPicker(){
   const picker=S.planState.picker;if(!picker)return"";
   const all=allRecipes();
   const wzTypeFilter=picker.typeFilter||(picker.type==="breakfast"?"breakfast":"mains");
   const pool=wzTypeFilter==="breakfast"?all.filter(r=>r.type==="breakfast"):all.filter(r=>r.type!=="breakfast");
-  const wzTagFilter=picker.tagFilter||null;
-  const shown=pool.filter(r=>{
-    if(wzTagFilter&&!(r.tags||[]).includes(wzTagFilter))return false;
-    if(picker.q&&!r.title.toLowerCase().includes(picker.q.toLowerCase()))return false;
-    return true;
-  });
+  const shown=pool.filter(r=>!picker.q||r.title.toLowerCase().includes(picker.q.toLowerCase()));
   const wizard=S.planState.wizard;
   const selected=picker.type==="breakfast"?wizard.breakfastIds:wizard.dinnerIds;
   let html=`<div class="modal-overlay" onclick="if(event.target===this)closeWizardPicker()">`;
@@ -2835,19 +2830,7 @@ function renderWizardPicker(){
   if(picker.type!=="breakfast")html+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button onclick="S.planState.picker.typeFilter='mains';S.planState.picker.q='';renderModals()" style="flex:1;padding:8px 0;border:2px solid ${wzTypeFilter==='mains'?G:'#E0DAD0'};border-radius:10px;background:${wzTypeFilter==='mains'?G:'#FFF'};color:${wzTypeFilter==='mains'?'#FFF':'#666'};font-size:13px;font-weight:700;cursor:pointer">🍽 Main Meals</button><button onclick="S.planState.picker.typeFilter='breakfast';S.planState.picker.q='';renderModals()" style="flex:1;padding:8px 0;border:2px solid ${wzTypeFilter==='breakfast'?G:'#E0DAD0'};border-radius:10px;background:${wzTypeFilter==='breakfast'?G:'#FFF'};color:${wzTypeFilter==='breakfast'?'#FFF':'#666'};font-size:13px;font-weight:700;cursor:pointer">☀️ Breakfast</button></div>`;
   html+=`<div style="position:relative;display:flex;align-items:center"><input value="${esc(picker.q||"")}" data-focus-id="wiz-search" oninput="S.planState.picker.q=this.value;renderModals()" placeholder="Search..." class="inp" style="font-size:14px;padding-right:32px">`;
   if(picker.q)html+=`<button onclick="S.planState.picker.q='';renderModals()" style="position:absolute;right:8px;border:none;background:none;cursor:pointer;font-size:16px;color:#AAA;line-height:1;padding:0">×</button>`;
-  html+=`</div>`;
-  const wzAllTags=[...new Set(pool.flatMap(r=>r.tags||[]))].sort();
-  if(wzAllTags.length){
-    html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">`;
-    if(wzTagFilter)html+=`<button onclick="S.planState.picker.tagFilter=null;renderModals()" style="padding:5px 12px;border:none;border-radius:14px;background:#E8E0DC;color:#6A6470;font-size:11px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">✕ Clear</button>`;
-    wzAllTags.forEach(tag=>{
-      const isOn=wzTagFilter===tag;
-      const wzBg=isOn?'#7E22CE':'#F3E8FF';const wzCol=isOn?'#FFF':'#7E22CE';const wzAction=isOn?'null':"'"+tag+"'";
-      html+=`<button onclick="S.planState.picker.tagFilter=${wzAction};renderModals()" style="padding:5px 12px;border:none;border-radius:14px;background:${wzBg};color:${wzCol};font-size:11px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">#${tag}</button>`;
-    });
-    html+=`</div>`;
-  }
-  html+=`</div>`;
+  html+=`</div></div>`;
   html+=`<div style="overflow-y:auto;padding:16px;flex:1"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">`;
   shown.forEach(r=>{
     const sel=selected.includes(r.id);
