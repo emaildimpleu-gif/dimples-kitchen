@@ -1917,7 +1917,7 @@ function renderRecipeCard(r){
   html+=`</div>`;
   if(ai.length>0){html+=`<div style="display:flex;flex-wrap:wrap;gap:4px">`;ai.forEach(i=>{html+=`<span style="background:#E8F6FB;border:1px solid #A0D4E8;color:#3A8AAA;border-radius:10px;padding:1px 7px;font-size:9px">🌿 ${esc(i)}</span>`;});html+=`</div>`;}
   const healthTagTips={"ActiveFlareUp":"Safe during an active anal fissure flare-up — soft, low-bulk, non-irritating","AnalFissure":"Suitable for anal fissure healing — gentle on the digestive tract","SafeMaintenance":"Good when healed but still being careful — supports ongoing recovery","LowBulk":"Low stool bulk — reduces pressure during bowel movements","LiquidSilk":"Very smooth and soft — easy to digest with minimal friction","InternalLubrication":"Contains healthy fats that lubricate the digestive tract","CoarseFiber":"Higher coarse fibre — great when well, avoid during active flare-up"};
-  if((r.tags||[]).length>0){html+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">`;r.tags.forEach(t=>{html+=`<span onclick="event.stopPropagation();S.lib.filter='tag:'+'${t}';render()" title="${healthTagTips[t]||t}" style="background:#F3E8FF;border:1px solid #C084FC;color:#7E22CE;border-radius:10px;padding:1px 7px;font-size:9px;cursor:pointer">#${t}</span>`;});html+=`</div>`;}
+  if((r.tags||[]).length>0){html+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">`;r.tags.forEach(t=>{const hTip=healthTagTips[t]||t;html+=`<span onclick="event.stopPropagation();S.lib.filter='tag:'+'${t}';render()" title="${hTip}" style="background:#F3E8FF;border:1px solid #C084FC;color:#7E22CE;border-radius:10px;padding:1px 7px;font-size:9px;cursor:pointer">#${t}</span>`;});html+=`</div>`;}
   const isUserR=S.userRecipes.some(x=>x.id===r.id);
   if(isUserR)html+=`<div style="margin-top:7px"><button onclick="event.stopPropagation();softDeleteRecipe('${esc(r.id)}')" style="font-size:9px;font-weight:700;color:#C04040;border:1px solid #F0C8C8;background:#FDF5F5;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">Delete</button></div>`;
   html+=`</div></div>`;
@@ -2774,8 +2774,10 @@ function renderPickerModal(){
     const fitColor=s.great?"#16A34A":"#D97706";
     const pickerImg=recipeImg(r);
     html+=`<div onclick="pickMeal(${dayIdx},'${mealType}','${esc(r.id)}',S.pickerModal.sv||2)" style="background:${BG};border-radius:10px;overflow:hidden;cursor:pointer;border:1px solid ${s.great?"#86EFAC":"#E8E3DA"};box-shadow:${s.great?"0 0 0 1px #86EFAC40":"none"};transition:all 0.12s" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">`;
-    if(pickerImg){html+=`<div style="position:relative;height:90px;overflow:hidden"><img src="${pickerImg}" alt="${esc(r.title)}" style="width:100%;height:90px;object-fit:cover;display:block"><span title="${s.great?'Fits your remaining calorie budget AND hits a good protein target for today':'Fits within your remaining calorie budget for today'}" style="position:absolute;top:5px;right:5px;font-size:9px;font-weight:700;color:#FFF;background:${fitColor};border-radius:6px;padding:2px 5px;cursor:help">${s.great?"✓ Great":"✓ Fits"}</span></div>`;}
-    else{html+=`<div style="height:60px;display:flex;align-items:center;justify-content:space-between;padding:8px 10px"><span style="font-size:26px">${r.emoji}</span><span title="${s.great?'Fits your remaining calorie budget AND hits a good protein target for today':'Fits within your remaining calorie budget for today'}" style="font-size:10px;font-weight:700;color:${fitColor};background:${fitColor}20;border-radius:8px;padding:2px 6px;cursor:help">${s.great?"✓ Great":"✓ Fits"}</span></div>`;}
+    const fitTip=s.great?"Fits your remaining calorie budget AND hits a good protein target for today":"Fits within your remaining calorie budget for today";
+    const fitLabel=s.great?"✓ Great":"✓ Fits";
+    if(pickerImg){html+=`<div style="position:relative;height:90px;overflow:hidden"><img src="${pickerImg}" alt="${esc(r.title)}" style="width:100%;height:90px;object-fit:cover;display:block"><span title="${fitTip}" style="position:absolute;top:5px;right:5px;font-size:9px;font-weight:700;color:#FFF;background:${fitColor};border-radius:6px;padding:2px 5px;cursor:help">${fitLabel}</span></div>`;}
+    else{html+=`<div style="height:60px;display:flex;align-items:center;justify-content:space-between;padding:8px 10px"><span style="font-size:26px">${r.emoji}</span><span title="${fitTip}" style="font-size:10px;font-weight:700;color:${fitColor};background:${fitColor}20;border-radius:8px;padding:2px 6px;cursor:help">${fitLabel}</span></div>`;}
     html+=`<div style="padding:8px 10px"><div style="font-weight:700;font-size:12px;color:#2E3038;margin-bottom:3px;line-height:1.3">${esc(r.title)}</div>`;
     html+=`<div style="font-size:11px;color:${T};font-weight:700">${r.nutrition.calories} cal · ${r.nutrition.protein}g P</div>`;
     {const t=[...r.ingredients,r.title].join(" ").toLowerCase();const n=r.nutrition;const pb=[];
@@ -2788,8 +2790,8 @@ function renderPickerModal(){
       const shown=pb.filter((b,i,a)=>a.findIndex(x=>x.label===b.label)===i).slice(0,2);
       const benefitTips={"rich in antioxidants":"Contains berries or pomegranate — high in antioxidants that help reduce inflammation","good for hair & skin":"Contains healthy fats (avocado, nuts, seeds) that support hair and skin health","bone support":"Combines calcium-rich dairy with vitamin K from leafy greens — great for bones","gut health":"Contains fermented foods (yogurt, miso, kimchi) that support healthy gut bacteria","blood sugar friendly":"High fibre + moderate carbs help keep blood sugar stable","high fibre":"10g+ of fibre per serving — supports digestive health and keeps you full"};
       if(shown.length===0){html+=`<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;font-style:italic">just… food 🤷</div>`;}
-      else{shown.forEach(b=>{html+=`<div title="${benefitTips[b.label]||b.label}" style="font-size:10px;color:${b.col};margin-top:3px;cursor:help">${b.icon} ${b.label}</div>`;});}}
-    if(antiInflam(r).length>0)html+=`<div title="Contains anti-inflammatory ingredients (e.g. turmeric, ginger, leafy greens, olive oil) that may help reduce inflammation in the body" style="font-size:10px;color:#065F46;margin-top:3px;cursor:help">🌿 anti-inflammatory</div>`;
+      else{shown.forEach(b=>{const bTip=benefitTips[b.label]||b.label;html+=`<div title="${bTip}" style="font-size:10px;color:${b.col};margin-top:3px;cursor:help">${b.icon} ${b.label}</div>`;});}}
+    if(antiInflam(r).length>0){const aiTip="Contains anti-inflammatory ingredients (e.g. turmeric, ginger, leafy greens, olive oil)";html+=`<div title="${aiTip}" style="font-size:10px;color:#065F46;margin-top:3px;cursor:help">🌿 anti-inflammatory</div>`;}
     html+=`</div></div>`;
   });
   html+=`</div></div></div></div>`;
@@ -2877,7 +2879,7 @@ function renderWizardPicker(){
     if(sel)html+=`<div style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;background:${G};display:flex;align-items:center;justify-content:center;color:#FFF;font-size:13px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,0.3)">✓</div>`;
     html+=`<div style="padding:${wzImg?"10px":"8px"} 12px 12px"><div style="font-weight:700;font-size:13px;color:#2E3038;margin-bottom:4px;line-height:1.35">${esc(r.title)}</div>`;
     html+=`<div style="font-size:12px;color:${T};font-weight:700">${r.nutrition.calories} cal · ${r.nutrition.protein}g protein</div>`;
-    if(antiInflam(r).length>0)html+=`<div title="Contains anti-inflammatory ingredients (e.g. turmeric, ginger, leafy greens, olive oil) that may help reduce inflammation in the body" style="font-size:11px;color:#065F46;margin-top:4px;cursor:help">🌿 anti-inflammatory</div>`;
+    if(antiInflam(r).length>0){const aiTip2="Contains anti-inflammatory ingredients (e.g. turmeric, ginger, leafy greens, olive oil)";html+=`<div title="${aiTip2}" style="font-size:11px;color:#065F46;margin-top:4px;cursor:help">🌿 anti-inflammatory</div>`;}
     html+=`</div></div>`;
   });
   html+=`</div></div>`;
