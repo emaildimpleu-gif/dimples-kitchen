@@ -1742,6 +1742,7 @@ function renderLibrary(){
     if(filter==="favs"&&!favs.has(r.id))return false;
     if(filter==="breakfast"&&r.type!=="breakfast")return false;
     if(filter==="mains"&&r.type==="breakfast")return false;
+    if(filter.startsWith("tag:")&&!(r.tags||[]).includes(filter.slice(4)))return false;
     if(q&&!r.title.toLowerCase().includes(q.toLowerCase()))return false;
     return true;
   });
@@ -1766,6 +1767,16 @@ function renderLibrary(){
   });
   html+=`<button onclick="openAddModal()" style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:6px;padding:8px 14px;background:#5AAAC8;color:#FFF;border:none;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Recipe</button>`;
   html+=`</div>`;
+  const allTags=[...new Set(all.flatMap(r=>r.tags||[]))].sort();
+  if(allTags.length){
+    html+=`<div style="padding:8px 28px;background:#EDE8E2;border-bottom:1px solid #E0D8D0;display:flex;flex-wrap:wrap;gap:6px">`;
+    allTags.forEach(tag=>{
+      const f=`tag:${tag}`;
+      const isOn=filter===f;
+      html+=`<button onclick="S.lib.filter='${f}';render()" style="padding:5px 12px;border:none;border-radius:14px;background:${isOn?'#7E22CE':'#F3E8FF'};color:${isOn?'#FFF':'#7E22CE'};font-size:11px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif">#${tag}</button>`;
+    });
+    html+=`</div>`;
+  }
   html+=`<div style="padding:8px 28px;font-size:11px;color:#A0989A;font-weight:500;background:#EDE8E2;border-bottom:1px solid #E0D8D0;letter-spacing:0.3px">${shown.length} recipe${shown.length!==1?"s":""}</div>`;
   html+=`<div style="padding:20px 28px"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:18px">`;
   shown.forEach(r=>{html+=renderRecipeCard(r);});
@@ -1905,6 +1916,7 @@ function renderRecipeCard(r){
   html+=`<span style="background:#F5F0EE;border:1px solid #E0D8D8;border-radius:3px;padding:3px 7px;font-size:9px;font-weight:600;color:var(--text-secondary)">${r.time} min</span>`;
   html+=`</div>`;
   if(ai.length>0){html+=`<div style="display:flex;flex-wrap:wrap;gap:4px">`;ai.forEach(i=>{html+=`<span style="background:#E8F6FB;border:1px solid #A0D4E8;color:#3A8AAA;border-radius:10px;padding:1px 7px;font-size:9px">🌿 ${esc(i)}</span>`;});html+=`</div>`;}
+  if((r.tags||[]).length>0){html+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">`;r.tags.forEach(t=>{html+=`<span onclick="event.stopPropagation();S.lib.filter='tag:'+'${t}';render()" style="background:#F3E8FF;border:1px solid #C084FC;color:#7E22CE;border-radius:10px;padding:1px 7px;font-size:9px;cursor:pointer">#${t}</span>`;});html+=`</div>`;}
   const isUserR=S.userRecipes.some(x=>x.id===r.id);
   if(isUserR)html+=`<div style="margin-top:7px"><button onclick="event.stopPropagation();softDeleteRecipe('${esc(r.id)}')" style="font-size:9px;font-weight:700;color:#C04040;border:1px solid #F0C8C8;background:#FDF5F5;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:'Montserrat',sans-serif;outline:none">Delete</button></div>`;
   html+=`</div></div>`;
