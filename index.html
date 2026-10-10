@@ -3765,8 +3765,8 @@ function exportWeeklyPDF(){
   const MEALS=MEAL_SLOTS;
   const all=allRecipes();
   const seen={};
-  for(let i=0;i<S.days;i++){MEALS.forEach(m=>{const slot=S.plan[i]?.[m];if(!slot?.id)return;const id=slot.id;if(!seen[id])seen[id]={meal:m,days:[],dayIdx:i,sv:getSv(i,m)};seen[id].days.push(DAYS[i]);});}
-  const planned=Object.entries(seen).map(([id,info])=>({id,meal:info.meal,days:info.days,dayIdx:info.dayIdx,sv:info.sv,recipe:all.find(x=>x.id===id)})).filter(x=>x.recipe);
+  for(let i=0;i<S.days;i++){MEALS.forEach(m=>{const slot=S.plan[i]?.[m];if(!slot?.id)return;const id=slot.id;if(!seen[id])seen[id]={meal:m,days:[],idxs:[],dayIdx:i,sv:getSv(i,m)};seen[id].days.push(DAYS[i]);seen[id].idxs.push(i);});}
+  const planned=Object.entries(seen).map(([id,info])=>({id,meal:info.meal,days:info.days,idxs:info.idxs,dayIdx:info.dayIdx,sv:info.sv,recipe:all.find(x=>x.id===id)})).filter(x=>x.recipe);
   if(!planned.length){alert("No meals planned yet!");return;}
   const imgBase="https://helpful-taffy-5bbe52.netlify.app/";
   const mealLabel={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner",snack:"Snack"};
@@ -3810,7 +3810,9 @@ function exportWeeklyPDF(){
     const model=getSlotServingModel(item.dayIdx,item.meal);
     const selectedServings=model?model.selectedServings:1;
     const guests=model?model.guests:0;
-    const totalServings=weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1);
+    const isJuicePage=String(item.id).indexOf("u_juice_")===0;
+    // Juices are made fresh, so their page shows 1 juice. The shopping list still buys for every juice in the week.
+    const totalServings=isJuicePage?1:(weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1));
     const pdfFactor=totalServings/((model&&model.recipeBaseServings)||r.servings||1);
     const nutritionScale=model?model.nutritionScale:1;
     const servingText=model?model.servingText:"1 serving";
@@ -3824,16 +3826,30 @@ function exportWeeklyPDF(){
     h+="<div class='r-title'>"+r.title+"</div>";
     const displayTime=item.meal==="breakfast"&&r.time>60?"5":r.time;
     h+="<div style='text-align:right'>";
-    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week</div>";
+    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; "+(isJuicePage?"Makes 1 juice, make fresh each day":"Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week")+"</div>";
     if(item.days.length>0){
       h+="<div class='r-meta' style='margin-top:4px'>Planned: "+item.days.join(", ")+"</div>";
-      if(item.days.length>1)h+="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>Cook once → used for "+item.days.length+" meals this week. Ingredients below are for all of them.</div>";
+      if(item.days.length>1){
+        const noteStyle="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>";
+        const isJuice=String(item.id).indexOf("u_juice_")===0;
+        if(isJuice){
+          h+=noteStyle+"On your plan "+item.days.length+" times this week. Ingredients below are for 1 juice. To make 2 days at once, double them and keep in full, sealed jars.</div>";
+        }else{
+          h+=noteStyle+"Cook once → used for "+item.days.length+" meals this week. Ingredients below are for all of them.</div>";
+          const first=item.idxs[0];
+          const late=item.idxs.filter(x=>x-first>=3).map(x=>DAYS[x]);
+          if(late.length){
+            if(item.meal==="breakfast")h+=noteStyle+"Keeps 3 days in the fridge. Make a second batch for "+late.join(", ")+".</div>";
+            else h+=noteStyle+"Keeps 3 days in the fridge. Freeze the portion"+(late.length>1?"s":"")+" for "+late.join(", ")+" on cook day, and move to the fridge the night before.</div>";
+          }
+        }
+      }
     }
     h+="</div>";
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
-    h+="<div class='ing-title'>"+(pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients")+"</div>";
+    h+="<div class='ing-title'>"+(isJuicePage?"Ingredients for 1 juice":(totalServings>1||pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients"))+"</div>";
     r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";});
     h+="</div><div><div class='meth-title'>Method</div>";
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+ (pdfFactor!==1?scaleStep(step,pdfFactor):step) +"</div></div>";});
