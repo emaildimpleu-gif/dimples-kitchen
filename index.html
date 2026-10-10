@@ -3682,7 +3682,7 @@ function closeBackup(){S.backupModal=null;renderModals();}
 function renderBackupModal(){
   if(!S.backupModal)return"";
   const{mode,importText,importError}=S.backupModal;
-  const exportText=JSON.stringify({plan:S.plan,settings:S.settings,userRecipes:S.userRecipes},null,2);
+  const exportText=JSON.stringify({plan:S.plan,settings:S.settings,userRecipes:S.userRecipes,extras:S.extras||{}},null,2);
   let html=`<div class="modal-overlay center" onclick="if(event.target===this)closeBackup()">`;
   html+=`<div class="modal-sheet centered" style="max-width:500px">`;
   html+=`<div style="padding:16px 20px;border-bottom:1px solid #E8E3DA;flex-shrink:0">`;
@@ -3712,6 +3712,7 @@ function doImport(){
     S.plan=d.plan||S.plan;
     if(d.settings){S.settings=d.settings;save("settings3",d.settings);}
     if(d.userRecipes){S.userRecipes=d.userRecipes;save("ur3",d.userRecipes);}
+    if(d.extras&&typeof d.extras==="object"){S.extras=d.extras;save("extras3",d.extras);}
     persistPlan();
     S.backupModal=null;
     S.saveStatus="✓ Restored!";
