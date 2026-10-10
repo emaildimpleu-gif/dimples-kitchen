@@ -1781,6 +1781,13 @@ function getTotalServings(recipeId, selectedServings){
   return{totalServings,factor,baseServings,selectedServings:sv,guestCount};
 }
 
+// Total servings of one recipe across the whole week (every slot it appears in).
+// This is what makes cook-once / batch cooking work: one shop, one cook, all servings.
+function weekServings(plan,days,id){
+  let t=0;
+  for(let i=0;i<days;i++){MEAL_SLOTS.forEach(m=>{if(plan?.[i]?.[m]?.id===id){const md=getSlotServingModel(i,m);t+=md?md.totalServings:1;}});}
+  return t;
+}
 function buildShoppingList(plan,recipes,days){
   // Collect unique recipe IDs and first-slot selected servings
   const seenSv={};
@@ -1794,7 +1801,9 @@ function buildShoppingList(plan,recipes,days){
   Object.entries(seenSv).forEach(([id,sv])=>{
     const recipe=recipes.find(r=>r.id===id);
     if(!recipe)return;
-    const{factor}=getTotalServings(id,sv);
+    const base=recipe.servings||1;
+    const guestCount=(S.guestServings||{})[id]||0;
+    const factor=(weekServings(plan,days,id)+guestCount)/base;
     recipe.ingredients.forEach(ing=>{
       const scaledIng=factor!==1?scaleIng(ing,factor):ing;
       allItems.push({ing:scaledIng,from:recipe.title,originalIng:ing});
@@ -1807,6 +1816,11 @@ function buildShoppingList(plan,recipes,days){
     if(!groups[cat])groups[cat]=[];
     groups[cat].push(item);
   });
+  // Add Food items (coffee, fruit, nuts…) have no recipe, so list them by how many days they appear
+  const extraCount={};
+  for(let i=0;i<days;i++){((S.extras&&S.extras[i])||[]).forEach(x=>{if(x&&x.name){extraCount[x.name]=(extraCount[x.name]||0)+1;}});}
+  const extraItems=Object.entries(extraCount).map(([name,n])=>({text:name+" × "+n,from:"Add Food ("+n+" day"+(n!==1?"s":"")+")"}));
+  if(extraItems.length)groups["Add Food items"]=extraItems;
   return groups;
 }
 function autoFill(plan,recipes,settings,days){
@@ -3796,8 +3810,8 @@ function exportWeeklyPDF(){
     const model=getSlotServingModel(item.dayIdx,item.meal);
     const selectedServings=model?model.selectedServings:1;
     const guests=model?model.guests:0;
-    const totalServings=model?model.totalServings:1;
-    const pdfFactor=model?model.ingredientFactor:1;
+    const totalServings=weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1);
+    const pdfFactor=totalServings/((model&&model.recipeBaseServings)||r.servings||1);
     const nutritionScale=model?model.nutritionScale:1;
     const servingText=model?model.servingText:"1 serving";
     // ──────────────────────────────────────────────────────────────────────────
@@ -3810,10 +3824,10 @@ function exportWeeklyPDF(){
     h+="<div class='r-title'>"+r.title+"</div>";
     const displayTime=item.meal==="breakfast"&&r.time>60?"5":r.time;
     h+="<div style='text-align:right'>";
-    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; Serves: "+selectedServings+(guests>0?" + "+guests+" guests":"")+"</div>";
+    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week</div>";
     if(item.days.length>0){
       h+="<div class='r-meta' style='margin-top:4px'>Planned: "+item.days.join(", ")+"</div>";
-      if(item.days.length>1&&item.meal!=="breakfast")h+="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>Cook once → used for "+item.days.length+" meals this week.</div>";
+      if(item.days.length>1)h+="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>Cook once → used for "+item.days.length+" meals this week. Ingredients below are for all of them.</div>";
     }
     h+="</div>";
     h+="</div></div>";
