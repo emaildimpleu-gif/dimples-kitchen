@@ -56,7 +56,7 @@
     <div id="header-title">DIMPLE'S KITCHEN</div>
     <div id="header-sub">
       <div id="header-info"></div>
-      <span style="display:flex;gap:6px"><button id="btn-send" onclick="sendPlanLink()">SEND TO IPAD</button><button id="btn-backup" onclick="openBackup()">BACKUP</button></span>
+      <button id="btn-send" onclick="sendPlanLink()">SHARE</button>
     </div>
   </header>
   <nav id="app-nav">
@@ -1664,7 +1664,7 @@ function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").
 function load(key,def){try{const v=localStorage.getItem("dk_"+key);return v?JSON.parse(v):def;}catch{return def;}}
 function getSv(d,m){return(S.servings&&S.servings[d+"-"+m])||2;}
 function setSv(d,m,v){if(!S.servings)S.servings={};S.servings[d+"-"+m]=v;}
-function save(key,val){try{localStorage.setItem("dk_"+key,JSON.stringify(val));return true;}catch{return false;}}
+function save(key,val){try{localStorage.setItem("dk_"+key,JSON.stringify(val));if(typeof syncMarkDirty==="function")syncMarkDirty(key);return true;}catch{return false;}}
 
 // ── LOGIC ────────────────────────────────────────────────────────────────────
 function parseIngredient(text){
@@ -3380,6 +3380,7 @@ function renderSettings(){
   const{tab,f,p}=S.settingsState;
   const calculated=calcNutrition(p);
   let html=`<div style="padding:18px;padding-bottom:30px">`;
+  html+=renderSyncCard();
   html+=`<div style="display:flex;background:#F0EDE8;border-radius:12px;padding:4px;margin-bottom:20px;gap:4px">`;
   [["profile","👤 My Profile"],["targets","🎯 Nutrition Targets"]].forEach(([id,label])=>{
     html+=`<button onclick="S.settingsState.tab='${id}';render()" style="flex:1;padding:9px 0;border:none;border-radius:9px;background:${tab===id?"#FFF":"transparent"};color:${tab===id?"#2E3038":"#999"};font-size:13px;font-weight:${tab===id?700:400};cursor:pointer;box-shadow:${tab===id?"0 1px 4px rgba(0,0,0,0.1)":"none"}">${label}</button>`;
@@ -3920,8 +3921,8 @@ async function sendPlanLink(){
     if(navigator.share){
       try{await navigator.share({title:"My Dimple's Kitchen plan",url});return;}catch(e){if(e&&e.name==="AbortError")return;}
     }
-    if(navigator.clipboard){await navigator.clipboard.writeText(url);alert("Link copied. Send it to your iPad (Messages, email or AirDrop) and open it there.");}
-    else{prompt("Copy this link and open it on your iPad:",url);}
+    if(navigator.clipboard){await navigator.clipboard.writeText(url);alert("Link copied. Send it to your other device (Messages, email or AirDrop) and open it there.");}
+    else{prompt("Copy this link and open it on your other device:",url);}
   }catch(e){alert("Sorry, the link couldn't be made. Use BACKUP instead.");}
 }
 async function loadPlanFromLink(){
@@ -3945,6 +3946,139 @@ async function loadPlanFromLink(){
   setTimeout(()=>{S.saveStatus="";render();},3000);
   render();
 }
+// ── SYNC ACROSS DEVICES (private GitHub Gist) ────────────────────────────────
+// Each device keeps a GitHub token (gist access only) in its own browser storage – never in this file.
+// Changes push up a few seconds after you make them; the app pulls the latest when it opens or comes back on screen.
+const SYNC_KEYS=["plan3","sv3","gs3","extras3","settings3","ur3","days3"];
+const SYNC_DESC="Dimple's Kitchen sync";
+const SYNC_FILE="dimples-kitchen-sync.json";
+let syncApplying=false,syncTimer=null,syncBusy=false,syncLastPull=0;
+function syncToken(){return localStorage.getItem("dk_sync_token")||"";}
+function syncSetMsg(m){S.syncMsg=m;if(S.tab==="settings")render();}
+function syncHeaders(){return{"Authorization":"Bearer "+syncToken(),"Accept":"application/vnd.github+json","Content-Type":"application/json"};}
+function syncMarkDirty(key){
+  if(syncApplying||!syncToken()||SYNC_KEYS.indexOf(key)<0)return;
+  localStorage.setItem("dk_sync_local",String(Date.now()));
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(syncPush,2500);
+}
+async function syncFindGist(){
+  let id=localStorage.getItem("dk_sync_gist");
+  if(id)return id;
+  for(let page=1;page<=5;page++){
+    const r=await fetch("https://api.github.com/gists?per_page=100&page="+page,{headers:syncHeaders()});
+    if(!r.ok)throw new Error(r.status===401?"token":"github");
+    const list=await r.json();
+    const g=list.find(x=>x.description===SYNC_DESC&&x.files&&x.files[SYNC_FILE]);
+    if(g){localStorage.setItem("dk_sync_gist",g.id);return g.id;}
+    if(list.length<100)break;
+  }
+  return null;
+}
+async function syncPush(){
+  syncTimer=null;
+  if(!syncToken())return;
+  if(syncBusy){syncTimer=setTimeout(syncPush,2500);return;}
+  syncBusy=true;
+  try{
+    let stamp=Number(localStorage.getItem("dk_sync_local")||0);
+    if(!stamp){stamp=Date.now();localStorage.setItem("dk_sync_local",String(stamp));}
+    const content=JSON.stringify({...planPackData(),updatedAt:stamp});
+    let id=await syncFindGist();
+    let r;
+    if(id){r=await fetch("https://api.github.com/gists/"+id,{method:"PATCH",headers:syncHeaders(),body:JSON.stringify({files:{[SYNC_FILE]:{content}}})});}
+    if(!id||r.status===404){
+      localStorage.removeItem("dk_sync_gist");
+      r=await fetch("https://api.github.com/gists",{method:"POST",headers:syncHeaders(),body:JSON.stringify({description:SYNC_DESC,public:false,files:{[SYNC_FILE]:{content}}})});
+      if(r.ok){const g=await r.json();localStorage.setItem("dk_sync_gist",g.id);}
+    }
+    if(!r.ok)throw new Error(r.status===401?"token":"github");
+    localStorage.setItem("dk_sync_remote",String(stamp));
+    syncSetMsg("✓ Synced "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}));
+  }catch(e){syncSetMsg(e.message==="token"?"⚠ Sync token not accepted. Check it in Settings.":"⚠ Couldn't sync. Will try again.");}
+  finally{syncBusy=false;}
+}
+async function syncPull(force){
+  if(!syncToken()||syncBusy||syncTimer&&!force)return;
+  if(!force&&Date.now()-syncLastPull<15000)return;
+  syncLastPull=Date.now();
+  syncBusy=true;
+  try{
+    const id=await syncFindGist();
+    if(!id){syncBusy=false;await syncPush();return;}
+    const r=await fetch("https://api.github.com/gists/"+id,{headers:syncHeaders(),cache:"no-store"});
+    if(!r.ok)throw new Error(r.status===401?"token":"github");
+    const g=await r.json();
+    const f=g.files&&g.files[SYNC_FILE];
+    if(!f)throw new Error("github");
+    let text=f.content;
+    if(f.truncated&&f.raw_url){const rr=await fetch(f.raw_url,{cache:"no-store"});text=await rr.text();}
+    const d=JSON.parse(text);
+    const localStamp=Number(localStorage.getItem("dk_sync_local")||0);
+    if(d&&Array.isArray(d.plan)&&Number(d.updatedAt||0)>localStamp){
+      syncApplying=true;
+      try{
+        S.plan=d.plan;
+        if(d.settings){S.settings=d.settings;S.settingsState.f={...d.settings};save("settings3",d.settings);}
+        if(Array.isArray(d.userRecipes)){S.userRecipes=d.userRecipes;save("ur3",d.userRecipes);}
+        if(d.extras&&typeof d.extras==="object")S.extras=d.extras;
+        if(d.servings&&typeof d.servings==="object")S.servings=d.servings;
+        if(d.guestServings&&typeof d.guestServings==="object")S.guestServings=d.guestServings;
+        if(d.days){S.days=d.days;save("days3",d.days);}
+        persistPlan();
+      }finally{syncApplying=false;}
+      localStorage.setItem("dk_sync_local",String(d.updatedAt));
+      localStorage.setItem("dk_sync_remote",String(d.updatedAt));
+      S.syncMsg="✓ Updated from your other device";
+      render();
+    }else{
+      if(localStamp>Number(d.updatedAt||0)){syncBusy=false;await syncPush();return;}
+      syncSetMsg("✓ Up to date");
+    }
+  }catch(e){syncSetMsg(e.message==="token"?"⚠ Sync token not accepted. Check it in Settings.":"⚠ Couldn't reach sync. Will try again.");}
+  finally{syncBusy=false;}
+}
+async function syncTurnOn(){
+  const el=document.getElementById("sync-token-input");
+  const t=(el&&el.value||"").trim();
+  if(!t){alert("Paste your GitHub token first.");return;}
+  localStorage.setItem("dk_sync_token",t);
+  localStorage.removeItem("dk_sync_gist");
+  S.syncMsg="Connecting…";render();
+  // Fresh device: take the cloud copy if there is one. First device: upload this plan.
+  localStorage.setItem("dk_sync_local","0");
+  await syncPull(true);
+}
+function syncTurnOff(){
+  if(!confirm("Turn off sync on this device? Your plan stays here, it just stops syncing."))return;
+  ["dk_sync_token","dk_sync_gist","dk_sync_local","dk_sync_remote"].forEach(k=>localStorage.removeItem(k));
+  S.syncMsg="";render();
+}
+function renderSyncCard(){
+  const on=!!syncToken();
+  let h=`<div style="background:#FFF;border:1px solid #E0D8D0;border-radius:5px;padding:16px;margin-bottom:20px">`;
+  h+=`<div style="font-size:14px;font-weight:700;color:#2E3038;margin-bottom:6px">Sync across my devices</div>`;
+  if(on){
+    h+=`<div id="sync-msg" style="font-size:13px;color:#5AAAC8;font-weight:600;margin-bottom:10px">${esc(S.syncMsg||"✓ Sync is on")}</div>`;
+    h+=`<div style="font-size:12px;color:#888;line-height:1.5;margin-bottom:12px">Changes save to your other devices a few seconds after you make them. Each device updates when you open the app.</div>`;
+    h+=`<div style="display:flex;gap:8px"><button onclick="syncPull(true)" style="flex:1;padding:10px;border:1.5px solid #5AAAC8;background:#FFF;color:#5AAAC8;border-radius:5px;font-weight:700;font-size:12px;cursor:pointer">Sync now</button><button onclick="syncTurnOff()" style="flex:1;padding:10px;border:1.5px solid #E0D8D0;background:#FFF;color:#999;border-radius:5px;font-weight:700;font-size:12px;cursor:pointer">Turn off</button></div>`;
+  }else{
+    h+=`<div style="font-size:12px;color:#888;line-height:1.5;margin-bottom:10px">Paste your GitHub sync token to keep this device in sync with your others. Use the same token on every device.</div>`;
+    h+=`<input id="sync-token-input" type="password" class="inp" placeholder="Paste token (starts with ghp_)" style="width:100%;margin-bottom:10px">`;
+    h+=`<button onclick="syncTurnOn()" style="width:100%;padding:11px;border:none;background:#5AAAC8;color:#FFF;border-radius:5px;font-weight:700;font-size:13px;cursor:pointer">Turn on sync</button>`;
+    if(S.syncMsg)h+=`<div id="sync-msg" style="font-size:12px;color:#C0392B;margin-top:8px">${esc(S.syncMsg)}</div>`;
+  }
+  h+=`<div style="border-top:1px solid #EEE8E0;margin-top:14px;padding-top:12px">`;
+  h+=`<div style="font-size:13px;font-weight:700;color:#2E3038;margin-bottom:4px">Backup</div>`;
+  h+=`<div style="font-size:12px;color:#888;line-height:1.5;margin-bottom:10px">Save a copy before big changes, like a new week. Sync copies mistakes too, so this is your safety net.</div>`;
+  h+=`<button onclick="openBackup()" style="width:100%;padding:10px;border:1.5px solid #5AAAC8;background:#FFF;color:#5AAAC8;border-radius:5px;font-weight:700;font-size:12px;cursor:pointer">Backup &amp; Restore</button>`;
+  h+=`</div>`;
+  h+=`</div>`;
+  return h;
+}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")syncPull(false);});
+window.addEventListener("focus",()=>syncPull(false));
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (function init(){
   const ur=load("ur3",[]);
@@ -3971,6 +4105,7 @@ async function loadPlanFromLink(){
   S.extras=extras;
   render();
   loadPlanFromLink();
+  syncPull(true);
 })();
 window.addEventListener("hashchange",loadPlanFromLink);
 </script>
