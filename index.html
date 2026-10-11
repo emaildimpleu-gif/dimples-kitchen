@@ -3562,7 +3562,10 @@ function emailList(){
 }
 
 
+// Tick/untick a shopping item by its position, so names with apostrophes (Siggi's) work
+function toggleShopItem(i){const k=(window._shopKeys||[])[i];if(k==null)return;S.checked[k]=!S.checked[k];render();}
 function renderShopping(){
+  window._shopKeys=[];
   const list=buildShoppingList(S.plan,allRecipes(),S.days);
   const total=Object.values(list).flat().length;
   const done=Object.values(S.checked).filter(Boolean).length;
@@ -3591,7 +3594,8 @@ function renderShopping(){
     items.forEach((item,idx)=>{
       const key=`${cat}|${item.text}|${idx}`;
       const chk=S.checked[key];
-      html+=`<div onclick="S.checked['${key.replace(/'/g,"\'")}']=${!chk};render()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:${idx<items.length-1?"1px solid rgba(0,0,0,0.05)":"none"};cursor:pointer;background:${chk?"rgba(0,0,0,0.015)":"#fff"};transition:background 0.12s" onmouseover="this.style.background='rgba(0,0,0,0.02)'" onmouseout="this.style.background='${chk?"rgba(0,0,0,0.015)":"#fff"}'">`;
+      const ki=(window._shopKeys=window._shopKeys||[]).push(key)-1;
+      html+=`<div onclick="toggleShopItem(${ki})" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:${idx<items.length-1?"1px solid rgba(0,0,0,0.05)":"none"};cursor:pointer;background:${chk?"rgba(0,0,0,0.015)":"#fff"};transition:background 0.12s" onmouseover="this.style.background='rgba(0,0,0,0.02)'" onmouseout="this.style.background='${chk?"rgba(0,0,0,0.015)":"#fff"}'">`;
       html+=`<div style="width:20px;height:20px;border-radius:5px;flex-shrink:0;border:2px solid ${chk?G:"#D0D0C8"};background:${chk?G:"transparent"};display:flex;align-items:center;justify-content:center;color:#FFF;font-size:11px">${chk?"✓":""}</div>`;
       html+=`<div style="flex:1">`;
       html+=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">`;
