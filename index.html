@@ -1845,7 +1845,7 @@ const SHOP_TABLE=[
   {re:/chil(i|e)/,notRe:/powder|flake|sauce/,one:"green chili",many:"green chilies",kind:"count",g:5},
   {re:/2% milk|\bmilk\b/,notRe:/coconut|almond|oat milk|soy/,one:"2% milk",kind:"milk"},
   {re:/walnut|almond(?! milk)|pecan|cashew|pistachio/,one:null,kind:"nuts"},
-  {re:/cannellini|chickpea|black bean|kidney bean|white bean|butter bean|pinto/,one:null,kind:"can"}
+  {re:/cannellini|chickpea|garbanzo|black bean|kidney bean|white bean|great northern|navy bean|butter bean|pinto/,one:null,kind:"can"}
 ];
 function shopCat(t,label){
   const l=String(label).toLowerCase();
@@ -1893,6 +1893,7 @@ function shopParse(text){
   const pg=String(text).match(/\((?:about\s*)?(\d+(?:\.\d+)?)\s*g\)/i);
   let s=String(text).replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim();
   let qty=0,unit="";
+  s=s.replace(/^(a|an)\s+(?=(handful|bunch|small|large|medium|piece|can|cup|few|couple)\b)/i,"1 ").replace(/^1 (few|couple)( of)?\s+/i,"2 ");
   if(/^pinch\b|^a pinch\b/i.test(s)){s=s.replace(/^(a )?pinch( of)?/i,"").trim();unit="pinch";}
   let n=shopParseNum(s);
   if(n){
@@ -1902,6 +1903,7 @@ function shopParse(text){
     if(rm){const n2=shopParseNum(s.slice(rm[0].length));if(n2){qty=n2.val;s=s.slice(rm[0].length+n2.len).trim();}}
   }
   const units=[["fl oz","floz"],["cups","cup"],["cup","cup"],["tablespoons","tbsp"],["tablespoon","tbsp"],["tbsp","tbsp"],["teaspoons","tsp"],["teaspoon","tsp"],["tsp","tsp"],["ounces","oz"],["ounce","oz"],["oz","oz"],["lbs","lb"],["lb","lb"],["pounds","lb"],["kg","kg"],["grams","g"],["gram","g"],["g","g"],["ml","ml"],["l","l"],["cloves","clove"],["clove","clove"],["stalks","stalk"],["stalk","stalk"],["slices","slice"],["slice","slice"],["cans","can"],["can","can"],["handfuls","handful"],["handful","handful"],["in\\.","in"],["inch","in"],["bunch","bunch"],["pints","pint"],["pint","pint"],["heads","head"],["head","head"],["pieces","piece"],["piece","piece"]];
+  if(qty){s=s.replace(/^\d+(?:\.\d+)?\s*-?\s*(?:oz|ounce)s?\.?\s+(?=(cans?|jars?)\b)/i,"");}
   if(qty&&!unit){for(const[u,norm]of units){const re=new RegExp("^"+u+"(?![a-z])","i");if(re.test(s)){unit=norm;s=s.replace(re,"").trim();break;}}}
   s=s.replace(/^of\s+/i,"").replace(/^(slice|piece)s?\s+/i,"");
   if(pg&&(unit===""||unit==="stalk"||unit==="handful"||unit==="piece")){qty=parseFloat(pg[1]);unit="g";}
@@ -1932,9 +1934,15 @@ function shopCombine(items){
     let key,label;
     if(t){
       label=t.one||p.name;
+      if(t.kind==="can"){
+        const n=p.name;
+        label=/cannellini|white bean|great northern|navy bean/.test(n)?"cannellini beans":/chickpea|garbanzo/.test(n)?"chickpeas":/black bean/.test(n)?"black beans":/kidney/.test(n)?"kidney beans":/butter bean/.test(n)?"butter beans":/pinto/.test(n)?"pinto beans":n.replace(/\b(canned|cans?|of)\b/g," ").replace(/\s+/g," ").trim();
+      }
       if(t.keepWord){const kw=p.name.match(t.keepWord);if(kw)label=kw[1]+" "+t.one;}
-      key="T:"+label;
-      if(!groups[key])groups[key]={t,label,many:t.keepWord&&label!==t.one?label.replace(t.one,t.many):(t.many||label),parts:[],froms:new Set()};
+      // group by the food itself, so "yellow potatoes" and "potato" add up together
+      key="T:"+(t.keepWord?t.one:label);
+      if(!groups[key])groups[key]={t,label,labels:new Set(),parts:[],froms:new Set()};
+      groups[key].labels.add(label);
     }else{label=p.name;key="N:"+p.name.replace(/s$/,"");}
     if(!groups[key])groups[key]={t,label,parts:[],froms:new Set()};
     groups[key].parts.push(p);groups[key].froms.add(from);
@@ -1942,8 +1950,15 @@ function shopCombine(items){
   const out=[];
   Object.values(groups).forEach(gp=>{
     const{t,parts,froms}=gp;let label=gp.label;let text;
+    let kinds="";
+    if(t&&gp.labels&&t.keepWord){
+      // "yellow" + plain → yellow; yellow + red → onions (yellow and red)
+      const named=[...gp.labels].filter(l=>l!==t.one);
+      if(named.length===1)label=named[0];
+      else{label=t.one;if(named.length>1)kinds=" ("+named.map(l=>l.replace(" "+t.one,"")).join(" and ")+")";}
+    }
     if(t){
-      const many=gp.many||t.many||label;
+      const many=t.keepWord&&label!==t.one?label.replace(t.one,t.many):(t.many||label);
       if(t.kind==="count"){
         let grams=0,count=0,fromWeight=false;
         parts.forEach(p=>{
@@ -1979,7 +1994,7 @@ function shopCombine(items){
         let oz=0;parts.forEach(p=>{const g=shopToGrams(p,{cup:120});oz+=g!=null?g/28.35:(p.qty||1);});
         text=shopCap(label)+" – "+shopFmt(oz,0.5)+" oz";
       }else if(t.kind==="can"){
-        let g=0;parts.forEach(p=>{if(p.unit==="can")g+=p.qty*240;else{const x=shopToGrams(p,{cup:180});g+=x!=null?x:240;}});
+        let g=0;parts.forEach(p=>{if(p.unit==="can")g+=p.qty*240;else{const x=shopToGrams(p,{cup:160});g+=x!=null?x:240;}});
         const cans=Math.max(1,Math.ceil(g/240-0.1));text=cans+" can"+(cans>1?"s":"")+" "+label.replace(/\bcanned\s*/,"")+" (15 oz each)";
       }
     }else{
@@ -2008,6 +2023,7 @@ function shopCombine(items){
       Object.entries(other).forEach(([u,q])=>bits.push(shopFmt(q,0.5)+" "+u+(q>1&&/^(slice|clove|stalk|can|piece|handful|head|bunch|pint)$/.test(u)?"s":"")));
       text=shopCap(label)+(bits.length?" – "+bits.join(" + "):"");
     }
+    if(kinds)text+=kinds;
     out.push({text:shopCap(text),from:[...froms].join(", "),combined:froms.size>1,count:parts.length,cat:shopCat(t,label)});
   });
   return out;
