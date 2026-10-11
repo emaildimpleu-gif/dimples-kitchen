@@ -1206,7 +1206,19 @@ desc:"From the Jason Vale 28-day juice programme. Nutrition is estimated from th
 tags:["AnalFissure", "ActiveFlareUp", "LiquidSilk"],
 ingredients:["1 ripe banana", "1 tsp raw cacao powder", "1 tsp tahini paste", "1 tsp manuka honey (or natural vegan sweetener)", "2 cups almond milk (see Raw Almond Milk)", "1 small handful ice"],
 steps:["Put the banana, cacao, tahini, honey and ice in the blender.", "Pour in the raw almond milk and blend until smooth."],
-nutrition:{calories:325,protein:7,carbs:38,fat:17,fiber:4,sodium:15}}
+nutrition:{calories:325,protein:7,carbs:38,fat:17,fiber:4,sodium:15}},
+{id:"u_juice_green_juice",title:"Green Juice",type:"snack",emoji:"🥤",time:15,servings:1,
+desc:"Single serving, about 300 ml. Your yield depends on your juicer. Nutrition is estimated from the ingredients.",
+tags:["AnalFissure", "ActiveFlareUp", "LiquidSilk"],
+ingredients:["2 medium carrots (115 g)", "1 large celery stalk (72 g)", "½ medium beetroot (67 g)", "1 medium tomato (72 g)", "⅓ medium cucumber (96 g)", "2–3 small radishes (29 g)", "1 generous handful spinach (29 g)", "¼ medium turnip (29 g)", "5–10 fresh mint leaves", "30–35 ml fresh lemon juice (½–1 lemon)"],
+steps:["Wash everything well.", "Juice the vegetables and the mint.", "Stir in the lemon juice and drink fresh. Measure how much you get, so you can fine-tune the amounts next time."],
+nutrition:{calories:120,protein:3,carbs:27,fat:0,fiber:2,sodium:230}},
+{id:"u_sprout_salad",title:"Sprout Salad",type:"lunch",emoji:"🥗",time:15,servings:1,
+desc:"Your own version. No cooking except boiling the eggs. Nutrition is estimated from the ingredients.",
+tags:["HighProtein", "QuickPrep", "MuscleSupport"],
+ingredients:["75 g moong dal sprouts", "60 g full-fat paneer, cubed", "2 eggs", "50 g cucumber, chopped", "50 g tomato, chopped", "10 g spring onion, sliced", "5 g fresh coriander or parsley, chopped", "10 g roasted pumpkin seeds", "1 tbsp fresh lemon juice", "2 g green chili, chopped (optional)", "Salt and black pepper to taste"],
+steps:["Boil the eggs for 10 minutes, cool them in cold water, then peel and chop.", "Toss the sprouts, paneer, cucumber, tomato, spring onion and herbs in a bowl.", "Add the lemon juice, salt and pepper, and the green chili if you want it.", "Top with the eggs and pumpkin seeds."],
+nutrition:{calories:483,protein:33,carbs:25,fat:28,fiber:6,sodium:220}}
 ];
 
 // ── MEAL SLOTS (snack added) ─────────────────────────
@@ -1788,6 +1800,229 @@ function weekServings(plan,days,id){
   for(let i=0;i<days;i++){MEAL_SLOTS.forEach(m=>{if(plan?.[i]?.[m]?.id===id){const md=getSlotServingModel(i,m);t+=md?md.totalServings:1;}});}
   return t;
 }
+// ── SIMPLE SHOPPING LIST ─────────────────────────────────────────────────────
+// Turns recipe lines like "400g fresh zucchini, chopped into thick rounds" + "1½ zucchinis"
+// into one plain line you can shop from: "3 zucchini (about 700 g)".
+const SHOP_FRAC={"⅛":0.125,"¼":0.25,"⅓":1/3,"⅜":0.375,"½":0.5,"⅝":0.625,"⅔":2/3,"¾":0.75,"⅞":0.875,"⅕":0.2};
+// kind: count | leafy (buy by oz) | bunch | berries | pint | garlic | ginger | eggs | milk | nuts | can
+const SHOP_TABLE=[
+  {re:/butternut/,one:"butternut squash",many:"butternut squashes",kind:"count",g:1000,cup:140},
+  {re:/zucchini/,one:"zucchini",many:"zucchini",kind:"count",g:200,cup:125},
+  {re:/spring onion|scallion|green onion/,one:"spring onions",kind:"bunch"},
+  {re:/onion/,one:"onion",many:"onions",kind:"count",g:150,cup:160,keepWord:/(yellow|red|white|sweet)/},
+  {re:/garlic/,one:"garlic",kind:"garlic"},
+  {re:/ginger/,one:"fresh ginger",kind:"ginger"},
+  {re:/lemon/,one:"lemon",many:"lemons",kind:"count",g:100,juiceMl:45},
+  {re:/\blime/,one:"lime",many:"limes",kind:"count",g:70,juiceMl:30},
+  {re:/cherry tomato/,one:"cherry tomatoes",kind:"pint",cup:150},
+  {re:/sun-?dried|tomato paste|tomato sauce|crushed tomato|diced tomato|canned tomato/,skip:true},
+  {re:/tomato/,one:"tomato",many:"tomatoes",kind:"count",g:150,cup:180},
+  {re:/sweet potato/,one:"sweet potato",many:"sweet potatoes",kind:"count",g:250,cup:135},
+  {re:/potato/,one:"potato",many:"potatoes",kind:"count",g:200,cup:150,keepWord:/(yellow|russet|red|baby)/},
+  {re:/carrot/,one:"carrot",many:"carrots",kind:"count",g:60,cup:130},
+  {re:/celery/,one:"celery",kind:"bunch",stalks:true},
+  {re:/beet/,one:"beet",many:"beets",kind:"count",g:130,cup:136},
+  {re:/cucumber/,one:"mini cucumber",many:"mini cucumbers",kind:"count",g:100,cup:120},
+  {re:/radish/,one:"radishes",kind:"bunch"},
+  {re:/turnip/,one:"turnip",many:"turnips",kind:"count",g:200,cup:130},
+  {re:/eggplant/,one:"eggplant",many:"eggplants",kind:"count",g:450,cup:80},
+  {re:/bell pepper|red pepper(?!s? roasted)|green pepper/,one:"bell pepper",many:"bell peppers",kind:"count",g:150,cup:150,notRe:/roasted/},
+  {re:/spinach/,one:"baby spinach",kind:"leafy",cup:30},
+  {re:/arugula|rocket/,one:"arugula",kind:"leafy",cup:20},
+  {re:/kale/,one:"kale",kind:"bunch"},
+  {re:/oregano|parsley|coriander|cilantro|\bmint\b|basil|dill|thyme|rosemary/,one:null,kind:"bunch"},
+  {re:/strawberr/,one:"strawberries",kind:"berries",cup:150},
+  {re:/blueberr|raspberr|blackberr/,one:null,kind:"berries",cup:145},
+  {re:/\bpears?\b/,one:"pear",many:"pears",kind:"count",g:180},
+  {re:/applesauce/,skip:false,one:null},
+  {re:/\bapples?\b/,one:"apple",many:"apples",kind:"count",g:180},
+  {re:/kiwi/,one:"kiwi",many:"kiwis",kind:"count",g:75},
+  {re:/papaya/,one:"papaya",many:"papayas",kind:"count",g:900},
+  {re:/avocado/,one:"avocado",many:"avocados",kind:"count",g:150},
+  {re:/banana/,one:"banana",many:"bananas",kind:"count",g:120},
+  {re:/orange/,one:"orange",many:"oranges",kind:"count",g:180},
+  {re:/\beggs?\b/,one:"egg",many:"eggs",kind:"eggs"},
+  {re:/chil(i|e)/,notRe:/powder|flake|sauce/,one:"green chili",many:"green chilies",kind:"count",g:5},
+  {re:/2% milk|\bmilk\b/,notRe:/coconut|almond|oat milk|soy/,one:"2% milk",kind:"milk"},
+  {re:/walnut|almond(?! milk)|pecan|cashew|pistachio/,one:null,kind:"nuts"},
+  {re:/cannellini|chickpea|black bean|kidney bean|white bean|butter bean|pinto/,one:null,kind:"can"}
+];
+function shopCat(t,label){
+  const l=String(label).toLowerCase();
+  if(t){
+    if(t.kind==="eggs"||t.kind==="milk")return "🥛 Dairy & Eggs";
+    if(t.kind==="nuts")return "🥜 Nuts & Seeds";
+    if(t.kind==="can")return "🥫 Canned & Beans";
+    return "🥬 Produce";
+  }
+  if(/frozen/.test(l))return "🧊 Frozen";
+  if(/sprout/.test(l))return "🥬 Produce";
+  if(/paneer|cottage cheese|skyr|siggi/.test(l))return "🥛 Dairy & Eggs";
+  if(/pumpkin seed|sunflower seed|chia|flax/.test(l))return "🥜 Nuts & Seeds";
+  if(/applesauce|roasted red pepper|\bsalt\b|black pepper|^pepper|cayenne|syrup|honey|vinegar|oil\b/.test(l))return "🫙 Pantry & Spices";
+  return catIng(label);
+}
+function shopCeil(x){
+  const w=Math.floor(x),f=x-w;const opts=[0,0.25,1/3,0.5,2/3,0.75,1];
+  for(const o of opts){if(o>=f-0.02)return w+o;}
+  return w+1;
+}
+function shopFmt(x,step){
+  step=step||0.25;
+  if(step===0.25){
+    // nearest quarter or third, so ⅔ cup stays ⅔ and doesn't jump to ¾
+    const w0=Math.floor(x),f0=x-w0;const opts=[0,0.25,1/3,0.5,2/3,0.75,1];
+    let best=0;opts.forEach(o=>{if(Math.abs(f0-o)<Math.abs(f0-best))best=o;});
+    x=w0+best;step=1/12;
+  }
+  step=step||0.25;
+  const r=Math.round(x/step)*step;
+  const w=Math.floor(r+1e-9),f=r-w;
+  const map=[[0,""],[0.25,"¼"],[1/3,"⅓"],[0.5,"½"],[2/3,"⅔"],[0.75,"¾"]];
+  let fs="";for(const[v,sym]of map){if(Math.abs(f-v)<0.02){fs=sym;break;}}
+  if(!fs&&f>0.02)fs=String(Math.round(f*100)/100).replace(/^0/,"");
+  if(w&&fs)return w+fs;
+  return fs||String(w);
+}
+function shopParseNum(s){
+  const m=s.match(/^(\d+(?:\.\d+)?)?\s*([⅛¼⅓⅜½⅝⅔¾⅞⅕])?/);
+  if(!m||(!m[1]&&!m[2]))return null;
+  return{val:(m[1]?parseFloat(m[1]):0)+(m[2]?SHOP_FRAC[m[2]]:0),len:m[0].length};
+}
+function shopParse(text){
+  const pg=String(text).match(/\((?:about\s*)?(\d+(?:\.\d+)?)\s*g\)/i);
+  let s=String(text).replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim();
+  let qty=0,unit="";
+  if(/^pinch\b|^a pinch\b/i.test(s)){s=s.replace(/^(a )?pinch( of)?/i,"").trim();unit="pinch";}
+  let n=shopParseNum(s);
+  if(n){
+    qty=n.val;s=s.slice(n.len).trim();
+    // ranges like "2–3" or "30-35": buy for the top of the range
+    const rm=s.match(/^[–-]\s*/);
+    if(rm){const n2=shopParseNum(s.slice(rm[0].length));if(n2){qty=n2.val;s=s.slice(rm[0].length+n2.len).trim();}}
+  }
+  const units=[["fl oz","floz"],["cups","cup"],["cup","cup"],["tablespoons","tbsp"],["tablespoon","tbsp"],["tbsp","tbsp"],["teaspoons","tsp"],["teaspoon","tsp"],["tsp","tsp"],["ounces","oz"],["ounce","oz"],["oz","oz"],["lbs","lb"],["lb","lb"],["pounds","lb"],["kg","kg"],["grams","g"],["gram","g"],["g","g"],["ml","ml"],["l","l"],["cloves","clove"],["clove","clove"],["stalks","stalk"],["stalk","stalk"],["slices","slice"],["slice","slice"],["cans","can"],["can","can"],["handfuls","handful"],["handful","handful"],["in\\.","in"],["inch","in"],["bunch","bunch"],["pints","pint"],["pint","pint"],["heads","head"],["head","head"],["pieces","piece"],["piece","piece"]];
+  if(qty&&!unit){for(const[u,norm]of units){const re=new RegExp("^"+u+"(?![a-z])","i");if(re.test(s)){unit=norm;s=s.replace(re,"").trim();break;}}}
+  s=s.replace(/^of\s+/i,"").replace(/^(slice|piece)s?\s+/i,"");
+  if(pg&&(unit===""||unit==="stalk"||unit==="handful"||unit==="piece")){qty=parseFloat(pg[1]);unit="g";}
+  // keep only the ingredient name: drop prep notes after a comma and filler words
+  let name=s.split(",")[0].toLowerCase();
+  name=name.replace(/\b(fresh|chopped|diced|minced|sliced|peeled|cubed|rinsed|drained|juiced|grated|shredded|large|medium|small|generous|ripe|full-fat|low-sodium|unsalted|to serve|to taste|optional|or vanilla|plain or|morning|decaf|leaves)\b/g," ").replace(/\broasted (?=(pumpkin|sunflower|almond|walnut|pecan|cashew))/g,"").replace(/\s+/g," ").trim();
+  return{qty,unit,name,raw:text};
+}
+function shopToGrams(p,t){
+  const q=p.qty;
+  switch(p.unit){
+    case"g":return q;case"kg":return q*1000;case"oz":return q*28.35;case"lb":return q*453.6;
+    case"cup":return t.cup?q*t.cup:null;case"tbsp":return t.cup?q*t.cup/16:null;case"tsp":return t.cup?q*t.cup/48:null;
+    case"handful":return t.cup?q*t.cup:null;
+    case"":case"piece":case"stalk":return t.g?(q||1)*t.g:null;
+  }
+  return null;
+}
+function shopCap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
+function shopCombine(items){
+  const groups={};
+  items.forEach(({ing,from,mult})=>{
+    const p=shopParse(ing);if(mult&&mult!==1)p.qty*=mult;
+    if(!p.name)return;
+    let t=SHOP_TABLE.find(x=>x.re.test(p.name)&&!(x.notRe&&x.notRe.test(p.name)));
+    if(t&&t.skip===false)t=null;
+    if(t&&t.skip)t=null;
+    let key,label;
+    if(t){
+      label=t.one||p.name;
+      if(t.keepWord){const kw=p.name.match(t.keepWord);if(kw)label=kw[1]+" "+t.one;}
+      key="T:"+label;
+      if(!groups[key])groups[key]={t,label,many:t.keepWord&&label!==t.one?label.replace(t.one,t.many):(t.many||label),parts:[],froms:new Set()};
+    }else{label=p.name;key="N:"+p.name.replace(/s$/,"");}
+    if(!groups[key])groups[key]={t,label,parts:[],froms:new Set()};
+    groups[key].parts.push(p);groups[key].froms.add(from);
+  });
+  const out=[];
+  Object.values(groups).forEach(gp=>{
+    const{t,parts,froms}=gp;let label=gp.label;let text;
+    if(t){
+      const many=gp.many||t.many||label;
+      if(t.kind==="count"){
+        let grams=0,count=0,fromWeight=false;
+        parts.forEach(p=>{
+          if(t.juiceMl&&(p.unit==="ml"||p.unit==="tbsp"||p.unit==="tsp")&&/juice/.test(p.name+" "+p.raw.toLowerCase())){const ml=p.unit==="ml"?p.qty:p.unit==="tbsp"?p.qty*15:p.qty*5;count+=ml/t.juiceMl;return;}
+          if(!p.unit||p.unit==="piece"){count+=p.qty||1;return;}
+          const g=shopToGrams(p,t);if(g!=null){grams+=g;fromWeight=true;}else count+=1;
+        });
+        const total=count+grams/t.g;const n=Math.max(1,Math.ceil(total-0.1));
+        const unitName=n===1?label:many;
+        text=n+" "+unitName+(fromWeight&&t.g<1000&&!t.juiceMl&&total*t.g>=30?" (about "+Math.round(total*t.g/10)*10+" g)":"");
+        if(t.re.source.indexOf("butternut")>=0)text=n+" "+(n===1?"butternut squash":"butternut squashes");
+      }else if(t.kind==="leafy"){
+        let g=0;parts.forEach(p=>{const x=shopToGrams(p,t);g+=x!=null?x:(p.qty||1)*t.cup;});
+        text=shopCap(label)+" (about "+Math.max(1,Math.ceil(g/28.35))+" oz)";
+      }else if(t.kind==="bunch"){
+        let stalks=0;if(t.stalks)parts.forEach(p=>{stalks+=p.unit==="g"?p.qty/70:(p.qty||1);});
+        stalks=Math.ceil(stalks-0.1);
+        text="1 bunch "+label+(t.stalks&&stalks?" (need "+stalks+" stalk"+(stalks>1?"s":"")+")":"");
+      }else if(t.kind==="berries"||t.kind==="pint"){
+        let cups=0;parts.forEach(p=>{if(p.unit==="cup")cups+=p.qty;else{const g=shopToGrams(p,t);if(g!=null)cups+=g/t.cup;}});
+        text=shopCap(label)+(cups?" – about "+shopFmt(cups)+" cup"+(cups>1.01?"s":""):"")+(t.kind==="pint"?" (1 pint holds about 2 cups)":" (1 lb pack is about 3 cups)");
+      }else if(t.kind==="garlic"){
+        let cloves=0;parts.forEach(p=>{cloves+=p.unit==="clove"?p.qty:p.unit==="tsp"?p.qty:p.unit==="tbsp"?p.qty*3:(p.qty||1);});
+        const heads=Math.max(1,Math.ceil(cloves/10));text=heads+" head"+(heads>1?"s":"")+" garlic (need about "+Math.ceil(cloves)+" cloves)";
+      }else if(t.kind==="ginger"){
+        text="1 piece fresh ginger";
+      }else if(t.kind==="eggs"){
+        let n=0;parts.forEach(p=>{n+=p.qty||1;});text=Math.ceil(n)+" eggs";
+      }else if(t.kind==="milk"){
+        let floz=0;parts.forEach(p=>{floz+=p.unit==="floz"||p.unit==="oz"?p.qty:p.unit==="cup"?p.qty*8:p.unit==="ml"?p.qty/29.57:p.unit==="tbsp"?p.qty/2:0;});
+        const gal=floz/128;text="2% milk – "+Math.round(floz)+" fl oz (about "+(gal<0.25?"1 quart":shopFmt(Math.ceil(gal*4)/4)+" gallon")+")";
+      }else if(t.kind==="nuts"){
+        let oz=0;parts.forEach(p=>{const g=shopToGrams(p,{cup:120});oz+=g!=null?g/28.35:(p.qty||1);});
+        text=shopCap(label)+" – "+shopFmt(oz,0.5)+" oz";
+      }else if(t.kind==="can"){
+        let g=0;parts.forEach(p=>{if(p.unit==="can")g+=p.qty*240;else{const x=shopToGrams(p,{cup:180});g+=x!=null?x:240;}});
+        const cans=Math.max(1,Math.ceil(g/240-0.1));text=cans+" can"+(cans>1?"s":"")+" "+label.replace(/\bcanned\s*/,"")+" (15 oz each)";
+      }
+    }else{
+      // Pantry items: add up by unit and show plainly
+      let tsp=0,grams=0,count=0,other={},hasVol=false,hasW=false,usedG=false;
+      parts.forEach(p=>{
+        if(p.unit==="cup"){tsp+=p.qty*48;hasVol=true;}
+        else if(p.unit==="tbsp"){tsp+=p.qty*3;hasVol=true;}
+        else if(p.unit==="tsp"){tsp+=p.qty;hasVol=true;}
+        else if(p.unit==="ml"){tsp+=p.qty/4.93;hasVol=true;}
+        else if(p.unit==="l"){tsp+=p.qty*1000/4.93;hasVol=true;}
+        else if(p.unit==="g"||p.unit==="kg"){grams+=p.unit==="kg"?p.qty*1000:p.qty;hasW=true;usedG=true;}
+        else if(p.unit==="oz"||p.unit==="lb"){grams+=p.unit==="lb"?p.qty*453.6:p.qty*28.35;hasW=true;}
+        else if(p.unit===""&&p.qty)count+=p.qty;
+        else if(p.unit&&p.unit!=="pinch"){other[p.unit]=(other[p.unit]||0)+p.qty;}
+      });
+      const bits=[];
+      if(hasVol){
+        // round up, never down, so the list never under-buys
+        if(tsp>=12){const c=shopCeil(tsp/48);bits.push(shopFmt(c)+" cup"+(c>1.01?"s":""));}
+        else if(tsp>=3){const tb=Math.ceil(tsp/3*2-0.01)/2;bits.push(shopFmt(tb,0.5)+" tbsp");}
+        else bits.push(shopFmt(tsp,0.25)+" tsp");
+      }
+      if(hasW)bits.push(usedG?Math.round(grams)+" g":shopFmt(grams/28.35,0.5)+" oz");
+      if(count)bits.push(shopFmt(count,0.5));
+      Object.entries(other).forEach(([u,q])=>bits.push(shopFmt(q,0.5)+" "+u+(q>1&&/^(slice|clove|stalk|can|piece|handful|head|bunch|pint)$/.test(u)?"s":"")));
+      text=shopCap(label)+(bits.length?" – "+bits.join(" + "):"");
+    }
+    out.push({text:shopCap(text),from:[...froms].join(", "),combined:froms.size>1,count:parts.length,cat:shopCat(t,label)});
+  });
+  return out;
+}
+// Add Food items: "Pear + ½ oz walnuts" ×7 → 7 pears and 3½ oz walnuts. Coffee and lattes → milk.
+function shopExtraParts(name){
+  const PORTION={walnut:"1 oz walnuts",almond:"1 oz almonds",papaya:"175 g papaya",kiwi:"1 kiwi",pear:"1 pear",apple:"1 apple",banana:"1 banana",avocado:"½ avocado",orange:"1 orange"};
+  return String(name).split(/\s\+\s|\s&\s|\band\b/i).map(part=>{
+    const p=part.trim();const low=p.toLowerCase();
+    if(/coffee|latte|cappuccino/.test(low))return "8 fl oz 2% milk";
+    if(/^[\d⅛¼⅓½⅔¾]/.test(p))return p;
+    for(const k in PORTION){if(low.indexOf(k)>=0)return PORTION[k];}
+    return "1 "+p;
+  });
+}
 function buildShoppingList(plan,recipes,days){
   // Collect unique recipe IDs and first-slot selected servings
   const seenSv={};
@@ -1809,18 +2044,15 @@ function buildShoppingList(plan,recipes,days){
       allItems.push({ing:scaledIng,from:recipe.title,originalIng:ing});
     });
   });
-  const combined=combineIngredients(allItems);
+  // Add Food items join the same list, split into their parts
+  for(let i=0;i<days;i++){((S.extras&&S.extras[i])||[]).forEach(x=>{if(x&&x.name){shopExtraParts(x.name).forEach(part=>allItems.push({ing:part,from:"Add Food"}));}});}
+  const combined=shopCombine(allItems);
   const groups={};
   combined.forEach(item=>{
-    const cat=catIng(item.text);
+    const cat=item.cat||catIng(item.text);
     if(!groups[cat])groups[cat]=[];
     groups[cat].push(item);
   });
-  // Add Food items (coffee, fruit, nuts…) have no recipe, so list them by how many days they appear
-  const extraCount={};
-  for(let i=0;i<days;i++){((S.extras&&S.extras[i])||[]).forEach(x=>{if(x&&x.name){extraCount[x.name]=(extraCount[x.name]||0)+1;}});}
-  const extraItems=Object.entries(extraCount).map(([name,n])=>({text:name+" × "+n,from:"Add Food ("+n+" day"+(n!==1?"s":"")+")"}));
-  if(extraItems.length)groups["Add Food items"]=extraItems;
   return groups;
 }
 function autoFill(plan,recipes,settings,days){
