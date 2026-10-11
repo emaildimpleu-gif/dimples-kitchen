@@ -29,7 +29,7 @@
     #header-title{color:#2E3038;font-size:15px;font-weight:800;letter-spacing:4px;text-transform:uppercase;font-family:'Montserrat',system-ui,sans-serif}
     #header-sub{display:flex;justify-content:space-between;align-items:center;margin-top:5px}
     #header-info{color:#6A6470;font-size:11px;font-family:'Montserrat',system-ui,sans-serif;font-weight:500}
-    #btn-backup{border:1.5px solid #5AAAC8;background:transparent;color:#5AAAC8;border-radius:3px;padding:5px 14px;font-size:10px;font-family:'Montserrat',system-ui,sans-serif;font-weight:700;letter-spacing:1px}
+    #btn-backup,#btn-send{border:1.5px solid #5AAAC8;background:transparent;color:#5AAAC8;border-radius:3px;padding:5px 14px;font-size:10px;font-family:'Montserrat',system-ui,sans-serif;font-weight:700;letter-spacing:1px}
     /* Nav tabs — top, below header */
     #app-nav{background:#F0EBE6;border-bottom:1px solid #E0D8D0;display:flex;padding:0 28px;z-index:99;position:sticky;top:65px}
     .nav-btn{flex:none;padding:12px 20px 11px;border:none;border-bottom:2.5px solid transparent;background:none;display:flex;align-items:center;gap:0;color:#888;font-family:'Montserrat',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;margin-bottom:-1px}
@@ -56,7 +56,7 @@
     <div id="header-title">DIMPLE'S KITCHEN</div>
     <div id="header-sub">
       <div id="header-info"></div>
-      <button id="btn-backup" onclick="openBackup()">BACKUP</button>
+      <span style="display:flex;gap:6px"><button id="btn-send" onclick="sendPlanLink()">SEND TO IPAD</button><button id="btn-backup" onclick="openBackup()">BACKUP</button></span>
     </div>
   </header>
   <nav id="app-nav">
@@ -3894,6 +3894,57 @@ function exportWeeklyPDF(){
   if(!newTab){const w=window.open("","_blank");if(w){w.document.write(h);w.document.close();}else{alert("Please allow popups.");}}
   setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
+// ── SEND PLAN TO ANOTHER DEVICE ───────────────────────────────────────────────
+// Packs the whole plan into a link. Open the link on the iPad or phone and the app loads it.
+// No server: the plan travels inside the link itself.
+function planPackData(){
+  return {v:1,plan:S.plan,settings:S.settings,userRecipes:S.userRecipes,extras:S.extras||{},servings:S.servings||{},guestServings:S.guestServings||{},days:S.days};
+}
+function b64urlFromBytes(bytes){let bin="";const CH=0x8000;for(let i=0;i<bytes.length;i+=CH)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+function bytesFromB64url(str){str=str.replace(/-/g,"+").replace(/_/g,"/");while(str.length%4)str+="=";const bin=atob(str);const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out;}
+async function streamBytes(bytes,stream){const res=new Response(new Blob([bytes]).stream().pipeThrough(stream));return new Uint8Array(await res.arrayBuffer());}
+async function encodePlan(obj){
+  const raw=new TextEncoder().encode(JSON.stringify(obj));
+  if(typeof CompressionStream!=="undefined"){try{return "z"+b64urlFromBytes(await streamBytes(raw,new CompressionStream("deflate-raw")));}catch(e){}}
+  return "j"+b64urlFromBytes(raw);
+}
+async function decodePlan(code){
+  const kind=code[0];let bytes=bytesFromB64url(code.slice(1));
+  if(kind==="z")bytes=await streamBytes(bytes,new DecompressionStream("deflate-raw"));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+async function sendPlanLink(){
+  try{
+    const code=await encodePlan(planPackData());
+    const url=location.origin+location.pathname+"#plan="+code;
+    if(navigator.share){
+      try{await navigator.share({title:"My Dimple's Kitchen plan",url});return;}catch(e){if(e&&e.name==="AbortError")return;}
+    }
+    if(navigator.clipboard){await navigator.clipboard.writeText(url);alert("Link copied. Send it to your iPad (Messages, email or AirDrop) and open it there.");}
+    else{prompt("Copy this link and open it on your iPad:",url);}
+  }catch(e){alert("Sorry, the link couldn't be made. Use BACKUP instead.");}
+}
+async function loadPlanFromLink(){
+  const h=location.hash||"";
+  if(h.indexOf("#plan=")!==0)return;
+  const clearHash=()=>{try{history.replaceState(null,"",location.pathname+location.search);}catch(e){location.hash="";}};
+  let d;
+  try{d=await decodePlan(h.slice(6));}catch(e){clearHash();alert("This plan link didn't work. Ask for a new one, or use BACKUP.");return;}
+  if(!d||!Array.isArray(d.plan)){clearHash();return;}
+  if(!confirm("Load the meal plan from your other device? This replaces the plan on this device.")){clearHash();return;}
+  S.plan=d.plan;
+  if(d.settings){S.settings=d.settings;S.settingsState.f={...d.settings};save("settings3",d.settings);}
+  if(Array.isArray(d.userRecipes)){S.userRecipes=d.userRecipes;save("ur3",d.userRecipes);}
+  if(d.extras&&typeof d.extras==="object")S.extras=d.extras;
+  if(d.servings&&typeof d.servings==="object")S.servings=d.servings;
+  if(d.guestServings&&typeof d.guestServings==="object")S.guestServings=d.guestServings;
+  if(d.days){S.days=d.days;save("days3",d.days);}
+  persistPlan();
+  clearHash();
+  S.saveStatus="✓ Plan loaded";
+  setTimeout(()=>{S.saveStatus="";render();},3000);
+  render();
+}
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (function init(){
   const ur=load("ur3",[]);
@@ -3919,7 +3970,9 @@ function exportWeeklyPDF(){
   S.guestServings=gs;
   S.extras=extras;
   render();
+  loadPlanFromLink();
 })();
+window.addEventListener("hashchange",loadPlanFromLink);
 </script>
 </body>
 </html>
