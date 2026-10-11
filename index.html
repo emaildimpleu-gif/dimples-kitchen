@@ -3578,6 +3578,43 @@ function emailList(){
 }
 
 
+// Build the list text from ticked or unticked items only.
+// mode 'need' = items NOT ticked (still to buy), 'ticked' = items ticked.
+function shopSelectedText(mode){
+  const list=buildShoppingList(S.plan,allRecipes(),S.days);
+  const parts=[];let n=0;
+  Object.entries(list).sort().forEach(([cat,items])=>{
+    const picked=items.filter((item,idx)=>{const c=!!S.checked[`${cat}|${item.text}|${idx}`];return mode==='ticked'?c:!c;});
+    if(!picked.length)return;
+    n+=picked.length;
+    parts.push(cat.toUpperCase()+'\n'+picked.map(i=>'- '+i.text).join('\n'));
+  });
+  return {n,text:parts.join('\n\n')};
+}
+function shopFlash(msg){S.shoppingExportMsg=msg;render();setTimeout(()=>{S.shoppingExportMsg='';render();},5000);}
+function shopCopyText(t){
+  const fallback=()=>{const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();let ok=false;try{ok=document.execCommand('copy');}catch(e){}document.body.removeChild(ta);return ok;};
+  if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(t).then(()=>true).catch(()=>fallback());
+  return Promise.resolve(fallback());
+}
+function shopMode(){return S.shopSendMode==='ticked'?'ticked':'need';}
+function shopCopy(){
+  const {n,text}=shopSelectedText(shopMode());
+  if(!n){alert(shopMode()==='ticked'?'Nothing is ticked yet.':'Everything is ticked – nothing left to buy.');return;}
+  shopCopyText(text).then(ok=>shopFlash(ok?'✓ Copied '+n+' items. Paste anywhere.':'Copy failed – try Share.'));
+}
+function shopShare(){
+  const {n,text}=shopSelectedText(shopMode());
+  if(!n){alert(shopMode()==='ticked'?'Nothing is ticked yet.':'Everything is ticked – nothing left to buy.');return;}
+  if(navigator.share){navigator.share({title:"Shopping list",text}).catch(()=>{});}
+  else shopCopyText(text).then(ok=>shopFlash(ok?'✓ Copied '+n+' items (no share sheet here).':'Copy failed.'));
+}
+function shopEmail(){
+  const {n,text}=shopSelectedText(shopMode());
+  if(!n){alert(shopMode()==='ticked'?'Nothing is ticked yet.':'Everything is ticked – nothing left to buy.');return;}
+  window.location.href='mailto:?subject='+encodeURIComponent("Dimple's Kitchen - Shopping List")+'&body='+encodeURIComponent(text);
+}
+
 // Tick/untick a shopping item by its position, so names with apostrophes (Siggi's) work
 function toggleShopItem(i){const k=(window._shopKeys||[])[i];if(k==null)return;S.checked[k]=!S.checked[k];render();}
 function renderShopping(){
@@ -3595,9 +3632,15 @@ function renderShopping(){
   const pillHover="this.style.transform='translateY(-1px)';this.style.boxShadow='inset 0 1px 0 rgba(255,255,255,0.25),0 4px 8px rgba(0,0,0,0.10),0 10px 20px rgba(0,0,0,0.10)'";
   const pillOut=`this.style.transform='';this.style.boxShadow='inset 0 1px 0 rgba(255,255,255,0.25),0 2px 4px rgba(0,0,0,0.08),0 6px 14px rgba(0,0,0,0.08)'`;
   html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">`;
-  html+=`<button onclick="sendToAnyList()" style="${pillBase};background:linear-gradient(to bottom,#67b1cc,#5FA8C5);color:#fff" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1;color:#fff">🛒</span> AnyList</button>`;
-  html+=`<button onclick="sendToOurGroceries()" style="${pillBase};background:linear-gradient(to bottom,#f2c068,#EDB75E);color:rgba(27,27,27,1)" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1">🛒</span> OurGroceries</button>`;
-  html+=`<button onclick="emailList()" style="${pillBase};background:linear-gradient(to bottom,#c0a4de,#B79AD6);color:#fff" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1;color:#fff">✉️</span> Email</button>`;
+  const sm=shopMode();
+  const segOn="background:#2E3038;color:#fff;border:1px solid #2E3038";
+  const segOff="background:#fff;color:#555;border:1px solid #E0DAD0";
+  html+=`<div style="width:100%;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:12px;color:#777;font-weight:600">Send:</span>`;
+  html+=`<button onclick="S.shopSendMode='need';render()" style="padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;${sm==='need'?segOn:segOff}">Not ticked (to buy)</button>`;
+  html+=`<button onclick="S.shopSendMode='ticked';render()" style="padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;${sm==='ticked'?segOn:segOff}">Ticked only</button></div>`;
+  html+=`<button onclick="shopCopy()" style="${pillBase};background:linear-gradient(to bottom,#67b1cc,#5FA8C5);color:#fff" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1;color:#fff">📋</span> Copy</button>`;
+  html+=`<button onclick="shopShare()" style="${pillBase};background:linear-gradient(to bottom,#f2c068,#EDB75E);color:rgba(27,27,27,1)" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1">📤</span> Share</button>`;
+  html+=`<button onclick="shopEmail()" style="${pillBase};background:linear-gradient(to bottom,#c0a4de,#B79AD6);color:#fff" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1;color:#fff">✉️</span> Email</button>`;
   html+=`<button onclick="exportWeeklyPDF()" style="${pillBase};background:linear-gradient(to bottom,#EFECEA,#E8E6E3);color:rgba(80,80,80,1);box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 4px rgba(0,0,0,0.06),0 6px 14px rgba(0,0,0,0.05);border:1px solid rgba(0,0,0,0.08)" onmouseover="${pillHover}" onmouseout="${pillOut}"><span style="font-size:15px;line-height:1">📄</span> PDF</button>`;
   if(S.shoppingExportMsg)html+=`<span style="font-size:13px;color:#16A34A;font-weight:600;align-self:center">${esc(S.shoppingExportMsg)}</span>`;
   html+=`</div>`;
