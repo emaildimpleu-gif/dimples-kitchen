@@ -3637,6 +3637,23 @@ function isMakeFreshRecipe(r){
   return !cook.test(t2);
 }
 
+// Overnight oats, chia pudding and similar: prepped ahead in single-serving jars.
+function isJarRecipe(r){
+  if(!r)return false;
+  const txt=((r.title||"")+" "+(r.steps||[]).join(" ")).toLowerCase();
+  if(!/oat|chia|pudding|muesli|parfait|bowl/.test((r.title||"").toLowerCase()))return false;
+  return /overnight|chia pudding/.test(txt)&&/jar|container|refrigerate|overnight/.test(txt);
+}
+// Group planned days into batches that keep 3 days, made the evening before the first day.
+function jarPrepPlan(idxs){
+  const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const sorted=[...idxs].sort((a,b)=>a-b);const out=[];
+  sorted.forEach(i=>{const last=out[out.length-1];
+    if(last&&i-last.first<=3){last.days.push(i);}else out.push({first:i,days:[i]});});
+  return out.map(b=>({n:b.days.length,forDays:b.days.map(i=>DAYS[i]),
+    when:b.first>0?DAYS[b.first-1]+" evening":"Sunday evening, before the week starts"}));
+}
+
 // Tick/untick a shopping item by its position, so names with apostrophes (Siggi's) work
 function toggleShopItem(i){const k=(window._shopKeys||[])[i];if(k==null)return;S.checked[k]=!S.checked[k];render();}
 function renderShopping(){
@@ -4132,8 +4149,12 @@ function exportWeeklyPDF(){
     // No-cook recipes (whips, yogurt bowls, salads, smoothies, snacks) are made fresh each time,
     // so their page shows 1 serving. The shopping list still buys for every time it is on the plan.
     const isFreshPage=!isJuicePage&&isMakeFreshRecipe(r);
-    const totalServings=isJuicePage?1:isFreshPage?1:(weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1));
-    const pdfFactor=totalServings/((model&&model.recipeBaseServings)||r.servings||1);
+    // Jar recipes (overnight oats, chia pudding) are prepped ahead, but each jar is 1 serving.
+    const isJarPage=!isJuicePage&&!isFreshPage&&isJarRecipe(r);
+    const weekTotal=weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1);
+    const totalServings=isJuicePage?1:isFreshPage?1:weekTotal;
+    const ingServings=isJarPage?1:totalServings;
+    const pdfFactor=ingServings/((model&&model.recipeBaseServings)||r.servings||1);
     const nutritionScale=model?model.nutritionScale:1;
     const servingText=model?model.servingText:"1 serving";
     // ──────────────────────────────────────────────────────────────────────────
@@ -4146,13 +4167,16 @@ function exportWeeklyPDF(){
     h+="<div class='r-title'>"+r.title+"</div>";
     const displayTime=item.meal==="breakfast"&&r.time>60?"5":r.time;
     h+="<div style='text-align:right'>";
-    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; "+(isJuicePage?"Makes 1 juice, make fresh each day":isFreshPage?"Makes 1 serving, make fresh each time":"Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week")+"</div>";
+    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; "+(isJuicePage?"Makes 1 juice, make fresh each day":isFreshPage?"Makes 1 serving, make fresh each time":isJarPage?"Makes "+weekTotal+" jar"+(weekTotal!==1?"s":"")+" for the week, 1 serving each":"Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week")+"</div>";
     if(item.days.length>0){
       h+="<div class='r-meta' style='margin-top:4px'>Planned: "+item.days.join(", ")+"</div>";
       if(item.days.length>1){
         const noteStyle="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>";
         const isJuice=String(item.id).indexOf("u_juice_")===0;
-        if(isFreshPage){
+        if(isJarPage){
+          jarPrepPlan(item.idxs).forEach(b=>{h+=noteStyle+"Make "+b.n+" jar"+(b.n!==1?"s":"")+" on "+b.when+" – for "+b.forDays.join(", ")+".</div>";});
+          h+=noteStyle+"Jars keep 3 days in the fridge. Amounts below are for 1 jar.</div>";
+        }else if(isFreshPage){
           h+=noteStyle+"On your plan "+item.days.length+" times this week. Make 1 serving fresh each time. Your shopping list already buys for all "+item.days.length+".</div>";
         }else if(isJuice){
           h+=noteStyle+"On your plan "+item.days.length+" times this week. Ingredients below are for 1 juice. To make 2 days at once, double them and keep in full, sealed jars.</div>";
@@ -4171,7 +4195,7 @@ function exportWeeklyPDF(){
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
-    h+="<div class='ing-title'>"+(isJuicePage?"Ingredients for 1 juice":isFreshPage?"Ingredients for 1 serving":(totalServings>1||pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients"))+"</div>";
+    h+="<div class='ing-title'>"+(isJuicePage?"Ingredients for 1 juice":isFreshPage?"Ingredients for 1 serving":isJarPage?"Ingredients for 1 jar":(totalServings>1||pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients"))+"</div>";
     r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";});
     h+="</div><div><div class='meth-title'>Method</div>";
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+ (pdfFactor!==1?scaleStep(step,pdfFactor):step) +"</div></div>";});
