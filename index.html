@@ -874,7 +874,7 @@ ingredients:["265g fresh carrots, peeled and sliced into thin rounds","285g cann
 steps:["In a medium saucepan, combine sliced carrots and vegetable broth. Bring to a boil, then reduce heat to low, cover and simmer 12–15 minutes until carrots are completely fork-tender.","Stir in pumpkin purée, coconut milk, cardamom and salt. Cook on low heat 3–5 minutes, stirring frequently, until heated through and uniform.","Remove from heat. Use an immersion blender on high for 60 seconds until completely smooth and glossy with zero lumps.","Pour into two bowls. Serve each with 2 soft-boiled eggs dropped into the center."],nutrition:{calories:380,protein:8,carbs:28,fat:27,fiber:7,sodium:420}}
 
 ,{id:"u_siggi_apple_cardamom",title:"Apple-cardamom Siggi's protein whip",type:"breakfast",emoji:"🍎",time:5,servings:1,tags:["ActiveFlareUp","AnalFissure"],
-ingredients:["⅔ cup Siggi's plain or vanilla yogurt","⅓ cup unsweetened applesauce","1 tsp maple syrup","¼ tsp ground cardamom"],
+ingredients:["1 Siggi's cup (5.3 oz), any flavour","⅓ cup unsweetened applesauce","1 tsp maple syrup (skip if your Siggi's is flavoured)","¼ tsp ground cardamom"],
 steps:["Combine all ingredients in a bowl. Whip together with a spoon until velvety smooth. Enjoy immediately."],nutrition:{calories:162,protein:15,carbs:22,fat:0,fiber:1,sodium:55}}
 
 ,{id:"u_papaya_snack",title:"Ripe papaya snack",type:"snack",emoji:"🥭",time:5,servings:1,tags:["LowBulk","ActiveFlareUp","SafeMaintenance","AnalFissure"],
@@ -3615,6 +3615,28 @@ function shopEmail(){
   window.location.href='mailto:?subject='+encodeURIComponent("Dimple's Kitchen - Shopping List")+'&body='+encodeURIComponent(text);
 }
 
+// A recipe is "make fresh" if it has no cooking and is not meant to sit overnight.
+// Soups, pasta, bowls with cooked grains and overnight oats stay as cook-once batches.
+function isMakeFreshRecipe(r){
+  if(!r)return false;
+  if(r.type==="juice"||String(r.id).indexOf("u_juice_")===0)return true;
+  const txt=((r.steps||[]).join(" ")+" "+(r.title||"")).toLowerCase();
+  if(/overnight|refrigerate|chill|freeze|meal prep|jar/.test(txt))return false;
+  // Salads are tossed fresh, unless they are built on a cooked grain or pasta that keeps.
+  const title=(r.title||"").toLowerCase();
+  if(/package instructions|package directions|while (still )?hot/.test(txt))return false;
+  const cook=/\b(bake|baked|baking|roast|roasted|boil|boiled|simmer|saut[eé]|fry|fried|grill|toast|toasted|cook|cooked|cooking|oven|skillet|saucepan|pan|pot|microwave|heat|preheat|steam|steamed|poach|scramble)\b/;
+  // Boiling a couple of eggs for a salad doesn't make it a batch dish.
+  const t2=/salad/.test(title)?txt.replace(/boil(ed)? (the )?eggs?|hard[- ]boiled eggs?|boil the eggs[^.]*\./g,""):txt;
+  if(/salad/.test(title)){
+    // Grain or pasta salads keep, so they batch. So do salads that need long oven or pot cooking.
+    if(/farro|quinoa|couscous|pasta|penne|orzo|rice|barley|bulgur|freekeh/.test(title+" "+txt))return false;
+    if(/\b(roast|roasted|roasting|bake|baked|baking|oven|simmer|steam|steamed|boil|boiled|instant pot)\b/.test(t2.replace(/roasted (red )?peppers?/g,"")))return false;
+    return true; // quick sears and toasting happen per serving
+  }
+  return !cook.test(t2);
+}
+
 // Tick/untick a shopping item by its position, so names with apostrophes (Siggi's) work
 function toggleShopItem(i){const k=(window._shopKeys||[])[i];if(k==null)return;S.checked[k]=!S.checked[k];render();}
 function renderShopping(){
@@ -4107,8 +4129,10 @@ function exportWeeklyPDF(){
     const selectedServings=model?model.selectedServings:1;
     const guests=model?model.guests:0;
     const isJuicePage=String(item.id).indexOf("u_juice_")===0;
-    // Juices are made fresh, so their page shows 1 juice. The shopping list still buys for every juice in the week.
-    const totalServings=isJuicePage?1:(weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1));
+    // No-cook recipes (whips, yogurt bowls, salads, smoothies, snacks) are made fresh each time,
+    // so their page shows 1 serving. The shopping list still buys for every time it is on the plan.
+    const isFreshPage=!isJuicePage&&isMakeFreshRecipe(r);
+    const totalServings=isJuicePage?1:isFreshPage?1:(weekServings(S.plan,S.days,item.id)||(model?model.totalServings:1));
     const pdfFactor=totalServings/((model&&model.recipeBaseServings)||r.servings||1);
     const nutritionScale=model?model.nutritionScale:1;
     const servingText=model?model.servingText:"1 serving";
@@ -4122,13 +4146,15 @@ function exportWeeklyPDF(){
     h+="<div class='r-title'>"+r.title+"</div>";
     const displayTime=item.meal==="breakfast"&&r.time>60?"5":r.time;
     h+="<div style='text-align:right'>";
-    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; "+(isJuicePage?"Makes 1 juice, make fresh each day":"Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week")+"</div>";
+    h+="<div class='r-meta'>"+displayTime+" min &nbsp;&middot;&nbsp; "+(isJuicePage?"Makes 1 juice, make fresh each day":isFreshPage?"Makes 1 serving, make fresh each time":"Makes: "+totalServings+" serving"+(totalServings!==1?"s":"")+" for the week")+"</div>";
     if(item.days.length>0){
       h+="<div class='r-meta' style='margin-top:4px'>Planned: "+item.days.join(", ")+"</div>";
       if(item.days.length>1){
         const noteStyle="<div style='font-size:10px;color:#EDB75E;font-weight:500;margin-top:3px'>";
         const isJuice=String(item.id).indexOf("u_juice_")===0;
-        if(isJuice){
+        if(isFreshPage){
+          h+=noteStyle+"On your plan "+item.days.length+" times this week. Make 1 serving fresh each time. Your shopping list already buys for all "+item.days.length+".</div>";
+        }else if(isJuice){
           h+=noteStyle+"On your plan "+item.days.length+" times this week. Ingredients below are for 1 juice. To make 2 days at once, double them and keep in full, sealed jars.</div>";
         }else{
           h+=noteStyle+"Cook once → used for "+item.days.length+" meals this week. Ingredients below are for all of them.</div>";
@@ -4145,7 +4171,7 @@ function exportWeeklyPDF(){
     h+="</div></div>";
     h+="<div class='r-body'><div>";
     h+="<img class='r-img' src='"+imgSrc+"' alt='"+r.title+"' onerror=\"this.style.display='none'\">";
-    h+="<div class='ing-title'>"+(isJuicePage?"Ingredients for 1 juice":(totalServings>1||pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients"))+"</div>";
+    h+="<div class='ing-title'>"+(isJuicePage?"Ingredients for 1 juice":isFreshPage?"Ingredients for 1 serving":(totalServings>1||pdfFactor!==1?"Ingredients for "+totalServings+" serving"+(totalServings!==1?"s":""):"Ingredients"))+"</div>";
     r.ingredients.forEach(ing=>{h+="<div class='ing'><div class='dot'></div>"+(pdfFactor!==1?scaleIng(ing,pdfFactor):ing)+"</div>";});
     h+="</div><div><div class='meth-title'>Method</div>";
     r.steps.forEach((step,i)=>{h+="<div class='step'><div class='snum'>"+(i+1)+"</div><div class='stxt'>"+ (pdfFactor!==1?scaleStep(step,pdfFactor):step) +"</div></div>";});
